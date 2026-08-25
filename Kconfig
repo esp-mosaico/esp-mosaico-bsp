@@ -1,0 +1,84 @@
+menu "ESP32-S31-Mosaico BSP"
+
+    menu "USB console and flashing"
+
+    config BSP_USB_CONSOLE
+        bool "Enable USB console"
+        default y
+        select TINYUSB_CDC_ENABLED
+        help
+            Use the board USB-OTG port for application logs and development.
+            Keep this enabled for normal applications.
+
+    menu "Advanced USB settings"
+        depends on BSP_USB_CONSOLE
+
+    config BSP_USB_CONSOLE_AUTO_INIT
+        bool "Initialize USB automatically before app_main"
+        default y
+        help
+            Keep this enabled for normal applications. Disable it only when
+            the application initializes TinyUSB itself.
+
+    config BSP_USB_AUTO_DOWNLOAD
+        bool "Allow USB entry into ROM download mode"
+        default y
+        help
+            Respond to the standard esptool DTR/RTS sequence and restart into
+            the ROM downloader. Keep this enabled for normal development.
+
+            ESP32-S31 rev0 re-enumerates its USB device during this switch.
+            Use the BSP-provided "idf.py mosaico-flash" command to handle the
+            transition in one invocation, or retry the native flash command.
+
+    config BSP_USB_CONSOLE_HOST_WAIT_MS
+        int "Wait for monitor before starting app_main (ms)"
+        depends on BSP_USB_CONSOLE_AUTO_INIT
+        range 0 5000
+        default 1500
+        help
+            Preserve early application logs while IDF Monitor reconnects.
+            Set to 0 when the application must start immediately.
+
+    endmenu
+
+    endmenu
+
+    config BSP_CO5300_ENABLE_TE
+        bool "Enable CO5300 TE anti-tearing synchronization"
+        default y
+        help
+            Enable the CO5300 tearing-effect output and connect GPIO43 to the
+            esp_lvgl_adapter TE synchronization path. The BSP default display
+            configuration uses TE_SYNC when this option is enabled.
+
+            Disable this option to omit the CO5300 TE-enable command and use
+            the normal SPI display path without a TE interrupt.
+
+    config BSP_LCD_QSPI_DRIVE_CAP
+        int "QSPI LCD bus pin drive strength (0-3)"
+        range 0 3
+        default 0
+        help
+            GPIO drive capability for the CO5300 QSPI bus pins: SCL and DATA0-DATA3.
+            Lower values reduce edge rate and RF emissions (useful for Wi-Fi/BLE
+            coexistence). 0 = weakest (GPIO_DRIVE_CAP_0), 3 = strongest.
+            Default is 0. Increase if display signal integrity fails at high clock.
+
+    config BSP_NAND_USE_QIO
+        bool "Use QIO mode for SPI NAND"
+        default n
+
+    config BSP_MOTOR_ENABLE_PWM
+        bool "Enable LEDC PWM motor control"
+        default y
+
+    config BSP_VCC_3V3_RAMP_MS
+        int "VCC_3V3 soft-start ramp time (ms)"
+        range 0 1000
+        default 50
+        help
+            Sweep the duty cycle on the VCC_3V3 enable GPIO over this time so the
+            high-side switch opens gradually. Set to 0 to drive the pin directly.
+
+endmenu
