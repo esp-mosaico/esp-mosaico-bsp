@@ -23,7 +23,7 @@ dependencies:
 
   # Local fork with Sleep In / Deep Standby helpers. Do not use registry copy.
   espressif/esp_lcd_co5300:
-    path: ../common_components/esp_lcd_co5300
+    path: components/esp_lcd_co5300
     public: true
     version: "2.2.0"
 

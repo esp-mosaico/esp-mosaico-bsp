@@ -1,5 +1,9 @@
 # ESP32-S31 Mosaico BSP
 
+This standalone component bundles the locally extended `esp_lcd_co5300`
+driver under `components/esp_lcd_co5300`. Other dependencies are resolved by
+the ESP-IDF Component Manager from `idf_component.yml`.
+
 ## USB-OTG console and download
 
 Applications must use this BSP component to enable automatic download through
@@ -57,7 +61,7 @@ applications that must start immediately without a USB host.
 
 ## Subboard hardware resources
 
-`bsp/subboard.h` describes the two connector slots and arbitrates board-level
+`include/bsp/subboard.h` describes the two connector slots and arbitrates board-level
 resources such as shared I2C address pins, DVP pins, power rails, and the USB
 Serial/JTAG pin conflict. Applications should normally use a concrete
 subboard component such as `mosaico_camera` instead of configuring these
