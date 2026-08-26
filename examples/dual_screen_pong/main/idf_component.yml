@@ -1,0 +1,12 @@
+dependencies:
+  idf:
+    version: ">=5.5"
+
+  mosaico_module_joystick:
+    path: ../../../expansion_modules/mosaico_module_joystick
+
+  mosaico_peer_link:
+    path: ../../../common_components/mosaico_peer_link
+
+  mosaico_interaction:
+    path: ../../../common_components/mosaico_interaction

@@ -1,0 +1,27 @@
+menu "Magnetic interaction demo"
+
+config MAGNETIC_INTERACTION_USE_HARDWARE
+    bool "Use calibrated BMM150 hardware input"
+    default y
+    help
+        Read the two populated BMM150 sensors and use the ESP-Mosaico V1
+        calibration profile. Disable this option to retain the touch-driven mock
+        source for interaction, rotation, and orbit development. The calibrated
+        hardware profile targets non-ferromagnetic desktop surfaces.
+
+config MAGNETIC_INTERACTION_NETWORK_ID
+    hex "Mosaico network ID"
+    default 0x4D4F5341
+    range 0x1 0xFFFFFFFF
+    help
+        Devices interact only with peers using the same network ID and radio
+        channel. Use a different value for nearby independent assemblies.
+
+config MAGNETIC_INTERACTION_ESPNOW_CHANNEL
+    int "ESP-NOW radio channel"
+    default 1
+    range 1 14
+    help
+        Fixed primary channel used by every device in the assembly.
+
+endmenu

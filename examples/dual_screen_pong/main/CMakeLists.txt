@@ -1,0 +1,20 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "pong_game.c"
+        "pong_input.c"
+        "pong_physics.c"
+        "pong_protocol.c"
+        "pong_network.c"
+        "pong_docking.c"
+        "pong_ui.c"
+        "pong_feedback.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        esp-mosaico-bsp
+        mosaico_module_joystick
+        mosaico_peer_link
+        mosaico_interaction
+        esp_timer
+        nvs_flash
+)

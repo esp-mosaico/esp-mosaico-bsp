@@ -1,0 +1,6 @@
+dependencies:
+  idf:
+    version: ">=5.5"
+
+  mosaico_peer_link:
+    path: ../../../common_components/mosaico_peer_link
