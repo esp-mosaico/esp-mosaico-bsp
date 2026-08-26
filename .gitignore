@@ -1,0 +1,90 @@
+# ESP-IDF generated files
+**/build/
+**/build_*/
+**/build-*/
+**/managed_components/
+**/sdkconfig
+**/sdkconfig.old
+**/sdkconfig.backup
+**/dependencies.lock
+**/size_info.txt
+
+# CMake and Ninja generated files
+**/CMakeCache.txt
+**/CMakeFiles/
+**/cmake_install.cmake
+**/compile_commands.json
+**/.ninja_deps
+**/.ninja_log
+
+# Documentation build artifacts
+**/docs/_build/
+**/docs/doxygen_sqlite3.db
+**/docs/_static/DejaVuSans.ttf
+**/docs/_static/NotoSansSC-Regular.otf
+
+# Python caches and virtual environments
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+coverage.xml
+.coverage
+htmlcov/
+
+# Test, coverage, and profiling outputs
+TEST_LOGS/
+coverage.info
+coverage_report/
+*.gcda
+*.gcno
+test_multi_heap_host
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor and IDE files
+.cursor/
+.vscode/
+.idea/
+.settings/
+.config/
+.dir-locals.el
+cmake-build-*/
+*.swp
+*.swo
+*.orig
+*~
+.#*
+
+# Source indexing tools
+GTAGS
+GRTAGS
+GPATH
+
+# Operating system metadata
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Local board/test artifacts (not materials)
+/test_results/
+**/sdkconfig.old
+
+# MCP server local install/build leftovers (also covered above; keep explicit)
+tools/mcp-server/build/
+tools/mcp-server/.pytest_cache/
+catalog/upstream_paths.local.json
