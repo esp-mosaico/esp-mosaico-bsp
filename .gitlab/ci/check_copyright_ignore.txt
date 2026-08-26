@@ -1,0 +1,3 @@
+examples/usb_extend_screen/main/tusb/tusb_config.h
+examples/usb_extend_screen/main/tusb/usb_descriptors.c
+examples/usb_extend_screen/main/tusb/usb_descriptors.h

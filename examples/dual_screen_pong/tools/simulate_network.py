@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Espressif Systems (Shanghai) CO LTD
+# SPDX-License-Identifier: Apache-2.0
 """Deterministic loss/jitter model for dual-screen Pong snapshot delivery."""
 
 from __future__ import annotations
