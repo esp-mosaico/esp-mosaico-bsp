@@ -13,7 +13,7 @@ The repository also includes reusable components for magnetic interaction, ESP-N
 | Item | Support |
 | --- | --- |
 | SoC | ESP32-S31 |
-| ESP-IDF | 6.1 or newer |
+| ESP-IDF | 6.2 or newer |
 
 ESP32-S31 support may require the preview target command provided by the selected ESP-IDF release:
 
@@ -43,7 +43,7 @@ The main public header is [`components/esp-mosaico-bsp/include/bsp/esp_mosaico.h
 
 ### Prerequisites
 
-- ESP-IDF 6.1 or newer with ESP32-S31 target support
+- ESP-IDF 6.2 or newer with ESP32-S31 target support
 - An ESP-Mosaico board
 - A data-capable USB or UART cable suitable for the selected example
 
