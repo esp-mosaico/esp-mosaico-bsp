@@ -1,0 +1,15 @@
+version: "0.2.0"
+description: High-level topology and application messaging service for ESP-Mosaico
+license: Apache-2.0
+
+targets:
+  - esp32s31
+
+dependencies:
+  idf: ">=5.5"
+
+  mosaico_interaction:
+    path: ../mosaico_interaction
+
+  mosaico_peer_link:
+    path: ../mosaico_peer_link

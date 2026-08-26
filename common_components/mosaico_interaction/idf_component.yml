@@ -1,0 +1,9 @@
+version: "0.3.0"
+description: Hardware-independent magnetic interaction, topology, and game primitives for ESP-Mosaico
+license: Apache-2.0
+
+targets:
+  - esp32s31
+
+dependencies:
+  idf: ">=5.5"
