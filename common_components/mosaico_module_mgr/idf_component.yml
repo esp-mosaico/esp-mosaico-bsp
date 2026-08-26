@@ -1,0 +1,11 @@
+version: "0.1.0"
+description: Mosaico hot-pluggable module discovery and lifecycle manager
+license: Apache-2.0
+
+targets:
+  - esp32s31
+
+dependencies:
+  idf: ">=5.5"
+  esp-mosaico-bsp:
+    path: ../..

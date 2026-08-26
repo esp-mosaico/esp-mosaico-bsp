@@ -1,0 +1,20 @@
+version: "0.1.0"
+description: Managed OV3640 DVP camera module for ESP-Mosaico
+license: Apache-2.0
+
+targets:
+  - esp32s31
+
+dependencies:
+  idf: ">=5.5"
+
+  esp-mosaico-bsp:
+    path: ../..
+
+  mosaico_module_mgr:
+    path: ../../common_components/mosaico_module_mgr
+
+  espressif/esp_video:
+    git: https://github.com/espressif/esp-video-components.git
+    path: esp_video
+    version: 4ef3d1e76924271ff63c5fc3812545bfffbc4a37

@@ -1,0 +1,17 @@
+version: "0.1.0"
+description: Button and WS2812 LED module driver for ESP-Mosaico
+license: Apache-2.0
+
+targets:
+  - esp32s31
+
+dependencies:
+  idf: ">=5.5"
+
+  esp-mosaico-bsp:
+    path: ../..
+
+  mosaico_module_mgr:
+    path: ../../common_components/mosaico_module_mgr
+
+  espressif/led_strip: "^3.0.3"

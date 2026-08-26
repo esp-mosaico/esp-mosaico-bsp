@@ -1,0 +1,15 @@
+menu "Mosaico Camera Subboard"
+
+    config MOSAICO_CAMERA_OV3640
+        bool "Enable the Mosaico OV3640 DVP camera"
+        default y
+        select ESP_VIDEO_ENABLE_DVP_VIDEO_DEVICE
+        select CAMERA_OV3640
+        select CAMERA_OV3640_AUTO_DETECT_DVP_INTERFACE_SENSOR
+        select CAMERA_OV3640_DVP_YUV422_UYVY_1024X768_25FPS
+        help
+            Build the fixed Mosaico camera subboard profile. The public API
+            selects 1024x768 UYVY at runtime and uses the external 24 MHz
+            oscillator fitted on the camera subboard.
+
+endmenu
