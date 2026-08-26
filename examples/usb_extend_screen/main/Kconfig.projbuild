@@ -1,0 +1,102 @@
+menu "USB Extend Screen Example"
+
+    config TUSB_VID
+        hex "USB Device VID"
+        default 0x303A
+    config TUSB_PID
+        hex "USB Device PID"
+        default 0x2986 if HID_TOUCH_ENABLE || UAC_AUDIO_ENABLE
+        default 0x2987 if !HID_TOUCH_ENABLE && !UAC_AUDIO_ENABLE
+    config TUSB_MANUFACTURER
+        string "USB Device Manufacture"
+        default "Espressif"
+    config TUSB_PRODUCT
+        string "Product Name"
+        default "udisp"
+
+    menu "USB extend screen configuration"
+        config USB_EXTEND_SCREEN_WIDTH
+            int "USB logical display width"
+            default 480
+            range 160 480
+            help
+                Resolution exposed to the PC. The image is hardware-scaled to
+                the 480-pixel-wide Mosaico panel. A smaller value makes desktop
+                content appear larger.
+
+        config USB_EXTEND_SCREEN_HEIGHT
+            int "USB logical display height"
+            default 480
+            range 160 480
+            help
+                Resolution exposed to the PC. The image is hardware-scaled to
+                the 480-pixel-high Mosaico panel. A smaller value makes desktop
+                content appear larger.
+
+        config USB_EXTEND_SCREEN_JPEG_QUALITY
+            int "USB extend screen jpeg quality"
+            default 10
+            range 1 10
+            help
+                JPEG quality hint embedded in the USB vendor string for the PC driver.
+
+        config USB_EXTEND_SCREEN_MAX_FPS
+            int "USB extend screen max fps"
+            default 60
+            range 1 60
+            help
+                Maximum frame rate reported to the PC driver.
+
+        config USB_EXTEND_SCREEN_FRAME_LIMIT_B
+            int "Maximum frame image (B)"
+            default 500000
+            help
+                Maximum JPEG payload size accepted from the PC driver.
+    endmenu
+
+    config USB_TASK_PRIORITY
+        int "USB Task Priority"
+        default 6
+        range 1 15
+
+    config VENDOR_TASK_PRIORITY
+        int "Vendor Task Priority"
+        default 5
+        range 1 15
+
+    config HID_TOUCH_ENABLE
+        bool "Enable HID Touch Report"
+        default y
+        help
+            Report CST9217 touch events to the PC as a HID digitizer.
+
+    config HID_TASK_PRIORITY
+        int "HID Task Priority"
+        depends on HID_TOUCH_ENABLE
+        default 5
+        range 1 15
+
+    config TOUCH_TASK_PRIORITY
+        int "Touch Task Priority"
+        depends on HID_TOUCH_ENABLE
+        default 5
+        range 1 15
+
+    config UAC_AUDIO_ENABLE
+        bool "Enable UAC Audio"
+        default y
+        help
+            Stream audio to/from the PC through the ES8311 codec.
+
+    config UAC_MIC_GAIN_DB
+        int "UAC microphone gain (dB)"
+        depends on UAC_AUDIO_ENABLE && UAC_MIC_CHANNEL_NUM > 0
+        range 0 42
+        default 24
+
+    config EXAMPLE_LCD_BUF_COUNT
+        int "LCD decode buffer count"
+        default 2
+        range 1 3
+
+endmenu
