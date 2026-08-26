@@ -2,11 +2,14 @@ dependencies:
   idf:
     version: ">=5.5"
 
+  esp-mosaico-bsp:
+    path: ../../../components/esp-mosaico-bsp
+
   mosaico_module_joystick:
-    path: ../../../expansion_modules/mosaico_module_joystick
+    path: ../../../components/mosaico_module_joystick
 
   mosaico_peer_link:
-    path: ../../../common_components/mosaico_peer_link
+    path: ../../../components/mosaico_peer_link
 
   mosaico_interaction:
-    path: ../../../common_components/mosaico_interaction
+    path: ../../../components/mosaico_interaction

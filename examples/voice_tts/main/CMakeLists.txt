@@ -1,9 +1,6 @@
 idf_component_register(
     SRCS "main.c"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES
-        esp-mosaico-bsp
-        esp-sr
 )
 
 # Keep ESP-DL compatible with GCC 16's stricter C++ linkage diagnostic.

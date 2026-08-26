@@ -2,11 +2,14 @@ dependencies:
   idf:
     version: ">=5.5"
 
+  esp-mosaico-bsp:
+    path: ../../../components/esp-mosaico-bsp
+
   mosaico_module_camera:
-    path: ../../../expansion_modules/mosaico_module_camera
+    path: ../../../components/mosaico_module_camera
 
   mosaico_module_button_led:
-    path: ../../../expansion_modules/mosaico_module_button_led
+    path: ../../../components/mosaico_module_button_led
 
   espressif/esp_new_jpeg:
     version: "^1.0.0"

@@ -37,7 +37,7 @@ idf.py --preview set-target esp32s31
 | Yes | USB | USB OTG |
 | Yes | Expansion | Left and right hot-pluggable module slots |
 
-The main public header is [`include/bsp/esp_mosaico.h`](include/bsp/esp_mosaico.h). Peripheral-specific APIs are provided by the headers under [`include/bsp`](include/bsp).
+The main public header is [`components/esp-mosaico-bsp/include/bsp/esp_mosaico.h`](components/esp-mosaico-bsp/include/bsp/esp_mosaico.h). Peripheral-specific APIs are provided by the headers under [`components/esp-mosaico-bsp/include/bsp`](components/esp-mosaico-bsp/include/bsp).
 
 ## Getting Started
 
@@ -80,10 +80,7 @@ Run `idf.py menuconfig` and open `ESP-Mosaico BSP` to configure the board-specif
 
 ```text
 .
-├── include/bsp/          Public BSP headers
-├── onboard/              Onboard peripheral implementations
-├── common_components/    Shared interaction, networking, and device components
-├── expansion_modules/    Hot-pluggable expansion-module drivers
+├── components/           BSP and shared reusable components
 └── examples/              Standalone ESP-IDF applications
 ```
 
@@ -93,20 +90,20 @@ Run `idf.py menuconfig` and open `ESP-Mosaico BSP` to configure the board-specif
 
 | Component | Description |
 | --- | --- |
-| [`esp-mosaico-bsp`](idf_component.yml) | Board-level display, touch, audio, sensors, storage, power, input, and expansion-slot APIs |
-| [`esp_lcd_co5300`](common_components/esp_lcd_co5300) | CO5300 SPI, QSPI, and MIPI-DSI LCD driver with Sleep In and Deep Standby support |
-| [`mosaico_module_mgr`](common_components/mosaico_module_mgr) | Expansion-module discovery, descriptor validation, and exclusive slot lifecycle management |
-| [`mosaico_interaction`](common_components/mosaico_interaction) | Hardware-independent magnetic classification, topology, and game primitives |
-| [`mosaico_peer_link`](common_components/mosaico_peer_link) | ESP-NOW transport, contact-session negotiation, and topology propagation |
-| [`mosaico_network`](common_components/mosaico_network) | High-level multi-device topology, routing, and application messaging service |
+| [`esp-mosaico-bsp`](components/esp-mosaico-bsp) | Board-level display, touch, audio, sensors, storage, power, input, and expansion-slot APIs |
+| [`esp_lcd_co5300`](components/esp_lcd_co5300) | CO5300 SPI, QSPI, and MIPI-DSI LCD driver with Sleep In and Deep Standby support |
+| [`mosaico_module_mgr`](components/mosaico_module_mgr) | Expansion-module discovery, descriptor validation, and exclusive slot lifecycle management |
+| [`mosaico_interaction`](components/mosaico_interaction) | Hardware-independent magnetic classification, topology, and game primitives |
+| [`mosaico_peer_link`](components/mosaico_peer_link) | ESP-NOW transport, contact-session negotiation, and topology propagation |
+| [`mosaico_network`](components/mosaico_network) | High-level multi-device topology, routing, and application messaging service |
 
 ### Expansion modules
 
 | Component | Description | Slot support |
 | --- | --- | --- |
-| [`mosaico_module_camera`](expansion_modules/mosaico_module_camera) | Managed OV3640 DVP camera with optional hardware JPEG decoding helpers | Left only |
-| [`mosaico_module_button_led`](expansion_modules/mosaico_module_button_led) | Two-button and three-WS2812 expansion module | Left or right |
-| [`mosaico_module_joystick`](expansion_modules/mosaico_module_joystick) | Dual-axis joystick with five buttons and non-blocking calibration | Left or right |
+| [`mosaico_module_camera`](components/mosaico_module_camera) | Managed OV3640 DVP camera with optional hardware JPEG decoding helpers | Left only |
+| [`mosaico_module_button_led`](components/mosaico_module_button_led) | Two-button and three-WS2812 expansion module | Left or right |
+| [`mosaico_module_joystick`](components/mosaico_module_joystick) | Dual-axis joystick with five buttons and non-blocking calibration | Left or right |
 
 The two slots share board resources. Applications should use a concrete module driver, which discovers and claims the required slot through `mosaico_module_mgr`, rather than controlling connector pins directly.
 

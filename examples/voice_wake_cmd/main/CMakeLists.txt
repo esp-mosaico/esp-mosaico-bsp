@@ -1,8 +1,6 @@
 idf_component_register(
     SRCS "main.c"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES
-        esp-sr
 )
 
 idf_build_get_property(build_components BUILD_COMPONENTS)

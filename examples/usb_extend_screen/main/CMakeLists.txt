@@ -11,7 +11,7 @@ endif()
 
 idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS "include" "tusb"
-                       PRIV_REQUIRES esp-mosaico-bsp esp_driver_jpeg esp_driver_ppa esp_lcd esp_mm)
+                       PRIV_REQUIRES esp_driver_jpeg esp_driver_ppa esp_lcd esp_mm)
 
 idf_build_get_property(build_components BUILD_COMPONENTS)
 if(usb_device_uac IN_LIST build_components)

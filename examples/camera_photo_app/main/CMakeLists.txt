@@ -7,13 +7,9 @@ set(srcs
 )
 
 set(priv_requires
-    esp-mosaico-bsp
     esp_driver_ppa
     esp_lcd
     esp_mm
-    mosaico_module_camera
-    mosaico_module_button_led
-    esp_new_jpeg
     nvs_flash
 )
 

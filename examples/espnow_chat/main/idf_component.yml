@@ -2,5 +2,8 @@ dependencies:
   idf:
     version: ">=5.5"
 
+  esp-mosaico-bsp:
+    path: ../../../components/esp-mosaico-bsp
+
   mosaico_peer_link:
-    path: ../../../common_components/mosaico_peer_link
+    path: ../../../components/mosaico_peer_link

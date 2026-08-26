@@ -8,4 +8,4 @@ targets:
 dependencies:
   idf: ">=5.5"
   esp-mosaico-bsp:
-    path: ../..
+    path: ../esp-mosaico-bsp

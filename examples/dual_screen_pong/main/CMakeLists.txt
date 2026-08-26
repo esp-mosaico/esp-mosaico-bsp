@@ -11,10 +11,6 @@ idf_component_register(
         "pong_feedback.c"
     INCLUDE_DIRS "."
     REQUIRES
-        esp-mosaico-bsp
-        mosaico_module_joystick
-        mosaico_peer_link
-        mosaico_interaction
         esp_timer
         nvs_flash
 )

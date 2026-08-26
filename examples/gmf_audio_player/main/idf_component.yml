@@ -2,4 +2,7 @@ dependencies:
   idf:
     version: ">=6.0"
 
+  esp-mosaico-bsp:
+    path: ../../../components/esp-mosaico-bsp
+
   espressif/esp_audio_simple_player: "^1.0.0"

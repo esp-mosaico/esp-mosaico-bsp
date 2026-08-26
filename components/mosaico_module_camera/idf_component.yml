@@ -9,10 +9,10 @@ dependencies:
   idf: ">=5.5"
 
   esp-mosaico-bsp:
-    path: ../..
+    path: ../esp-mosaico-bsp
 
   mosaico_module_mgr:
-    path: ../../common_components/mosaico_module_mgr
+    path: ../mosaico_module_mgr
 
   espressif/esp_video:
     git: https://github.com/espressif/esp-video-components.git
