@@ -4,7 +4,7 @@
  */
 
 #include <string.h>
-#include "bsp/esp32_s31_mosaico.h"
+#include "bsp/esp_mosaico.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"

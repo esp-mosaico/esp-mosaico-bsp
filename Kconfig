@@ -1,48 +1,4 @@
-menu "ESP32-S31-Mosaico BSP"
-
-    menu "USB console and flashing"
-
-    config BSP_USB_CONSOLE
-        bool "Enable USB console"
-        default y
-        select TINYUSB_CDC_ENABLED
-        help
-            Use the board USB-OTG port for application logs and development.
-            Keep this enabled for normal applications.
-
-    menu "Advanced USB settings"
-        depends on BSP_USB_CONSOLE
-
-    config BSP_USB_CONSOLE_AUTO_INIT
-        bool "Initialize USB automatically before app_main"
-        default y
-        help
-            Keep this enabled for normal applications. Disable it only when
-            the application initializes TinyUSB itself.
-
-    config BSP_USB_AUTO_DOWNLOAD
-        bool "Allow USB entry into ROM download mode"
-        default y
-        help
-            Respond to the standard esptool DTR/RTS sequence and restart into
-            the ROM downloader. Keep this enabled for normal development.
-
-            ESP32-S31 rev0 re-enumerates its USB device during this switch.
-            Use the BSP-provided "idf.py mosaico-flash" command to handle the
-            transition in one invocation, or retry the native flash command.
-
-    config BSP_USB_CONSOLE_HOST_WAIT_MS
-        int "Wait for monitor before starting app_main (ms)"
-        depends on BSP_USB_CONSOLE_AUTO_INIT
-        range 0 5000
-        default 1500
-        help
-            Preserve early application logs while IDF Monitor reconnects.
-            Set to 0 when the application must start immediately.
-
-    endmenu
-
-    endmenu
+menu "ESP-Mosaico BSP"
 
     config BSP_CO5300_ENABLE_TE
         bool "Enable CO5300 TE anti-tearing synchronization"

@@ -6,7 +6,7 @@
 
 /**
  * @file
- * @brief ESP BSP: ESP32-S31-Mosaico
+ * @brief ESP BSP: ESP-Mosaico
  */
 
 #pragma once
@@ -24,13 +24,12 @@
 #include "bsp/nand_flash.h"
 #include "bsp/power.h"
 #include "bsp/subboard.h"
-#include "bsp/usb_console.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define BSP_BOARD_ESP32_S31_MOSAICO
+#define BSP_BOARD_ESP_MOSAICO
 
 #define BSP_CAPS_DISPLAY          1
 #define BSP_CAPS_TOUCH            1
@@ -45,8 +44,6 @@ extern "C" {
 #define BSP_CAPS_MAGNETOMETER     1
 #define BSP_CAPS_BATTERY          1
 #define BSP_CAPS_USB_OTG          1
-#define BSP_CAPS_USB_CONSOLE      1
-#define BSP_CAPS_USB_AUTO_DOWNLOAD 1
 #define BSP_CAPS_SDCARD           0
 #define BSP_CAPS_CAMERA           0
 #define BSP_CAPS_SUBBOARDS        1

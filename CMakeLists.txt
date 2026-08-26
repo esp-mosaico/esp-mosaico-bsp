@@ -1,12 +1,11 @@
 set(BSP_SRCS
-    "esp32_s31_mosaico.c"
-    "subboard.c"
-    "usb_console.c"
-    "display.c"
-    "audio.c"
-    "nand_flash.c"
-    "sensors.c"
-    "battery.c"
+    "onboard/esp_mosaico.c"
+    "onboard/subboard.c"
+    "onboard/display.c"
+    "onboard/audio.c"
+    "onboard/nand_flash.c"
+    "onboard/sensors.c"
+    "onboard/battery.c"
 )
 
 set(BSP_REQUIRES
@@ -36,19 +35,3 @@ idf_component_register(
     INCLUDE_DIRS "include"
     REQUIRES ${BSP_REQUIRES}
 )
-
-if(CONFIG_BSP_USB_CONSOLE)
-    # The component manager selects esp_tinyusb through the matching Kconfig
-    # rule. Add the build dependency after component discovery so its headers
-    # are available without making TinyUSB mandatory for every BSP user.
-    idf_component_optional_requires(PUBLIC espressif__esp_tinyusb)
-endif()
-
-if(CONFIG_BSP_USB_CONSOLE_AUTO_INIT)
-    # Run BSP initialization from IDF's main task immediately before the user
-    # app_main. -u also retains usb_console.c when no application API is used.
-    target_link_libraries(${COMPONENT_LIB} INTERFACE
-        "-Wl,--wrap=app_main"
-        "-u __wrap_app_main"
-    )
-endif()

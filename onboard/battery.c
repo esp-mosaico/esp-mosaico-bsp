@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "bsp/esp32_s31_mosaico.h"
+#include "bsp/esp_mosaico.h"
 #include "bq27220.h"
 #include "esp_check.h"
 #include "esp_log.h"

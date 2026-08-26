@@ -254,9 +254,8 @@ esp_err_t bsp_subboard_camera_acquire(bsp_subboard_slot_t slot,
     portEXIT_CRITICAL(&s_resource_lock);
 
     /*
-     * Camera D2 shares GPIO33 with the built-in USB Serial/JTAG PHY. The BSP
-     * application console uses USB-OTG, so releasing these pads does not stop
-     * the BSP TinyUSB console.
+     * Camera D2 shares GPIO33 with the built-in USB Serial/JTAG PHY. Releasing
+     * these pads does not affect the independent USB-OTG peripheral.
      */
     usb_serial_jtag_ll_disable_intr_mask(USB_SERIAL_JTAG_LL_INTR_MASK);
     usb_serial_jtag_ll_phy_enable_pad(false);
