@@ -1,0 +1,58 @@
+name: Build ESP-IDF examples
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover-examples:
+    name: Discover examples
+    runs-on: ubuntu-latest
+    outputs:
+      examples: ${{ steps.discover.outputs.examples }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find ESP-IDF projects
+        id: discover
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+
+          examples = sorted(str(path.parent) for path in Path("examples").glob("*/CMakeLists.txt"))
+          if not examples:
+              raise SystemExit("No ESP-IDF examples found under examples/")
+          print(f"examples={json.dumps(examples, separators=(',', ':'))}")
+          PY
+
+  build-examples:
+    name: Build ${{ matrix.example }}
+    needs: discover-examples
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: espressif/idf:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example: ${{ fromJSON(needs.discover-examples.outputs.examples) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build example
+        working-directory: ${{ matrix.example }}
+        shell: bash
+        run: |
+          source "$IDF_PATH/export.sh"
+          if ! idf.py -B build-ci build; then
+              echo "::error title=ESP-IDF build failed::Failed to build ${{ matrix.example }}"
+              exit 1
+          fi
