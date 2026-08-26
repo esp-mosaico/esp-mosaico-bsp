@@ -1,0 +1,31 @@
+menu "Camera Photo App"
+
+    config CAMERA_PHOTO_NAND_START_PAGE
+        int "First logical NAND page used for photo storage"
+        default 64
+        range 1 2147483647
+        help
+            Logical page index where the photo catalog and JPEG files are stored.
+            This region will be overwritten by saved photos.
+
+    config CAMERA_PHOTO_MAX_COUNT
+        int "Maximum number of photos stored on NAND"
+        default 64
+        range 1 256
+        help
+            Maximum number of JPEG files tracked by the on-flash catalog.
+
+    config CAMERA_PHOTO_USB_MSC
+        bool "Enable USB High-Speed MSC photo export (U-disk)"
+        default n
+        help
+            Expose a FAT partition over USB OTG so a PC can browse exported
+            JPEG files under DCIM/.
+
+            When enabled, also configure in menuconfig:
+            - Partition Table -> Custom partition table CSV (partitions.csv)
+            - Component config -> TinyUSB -> Enable Mass Storage Class (MSC)
+
+            sdkconfig.defaults keeps this disabled and uses SINGLE_APP_LARGE.
+
+endmenu

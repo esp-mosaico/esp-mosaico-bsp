@@ -1,0 +1,9 @@
+dependencies:
+  idf:
+    version: ">=6.0"
+
+  mosaico_module_camera:
+    path: ../../../expansion_modules/mosaico_module_camera
+
+  espressif/human_face_detect: "^0.5.0"
+  espressif/coco_detect: "^0.4.0"

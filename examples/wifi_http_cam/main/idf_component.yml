@@ -1,0 +1,6 @@
+dependencies:
+  idf:
+    version: ">=6.0"
+
+  mosaico_module_camera:
+    path: ../../../expansion_modules/mosaico_module_camera
