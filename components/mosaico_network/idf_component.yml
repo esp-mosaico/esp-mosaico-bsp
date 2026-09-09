@@ -9,7 +9,7 @@ dependencies:
   idf: ">=5.5"
 
   mosaico_interaction:
-    path: ../mosaico_interaction
+    override_path: ../mosaico_interaction
 
   mosaico_peer_link:
-    path: ../mosaico_peer_link
+    override_path: ../mosaico_peer_link

@@ -8,8 +8,6 @@ targets:
 dependencies:
   idf: ">=5.5"
 
-  esp-mosaico-bsp:
-    path: ../esp-mosaico-bsp
-
   mosaico_module_mgr:
-    path: ../mosaico_module_mgr
+    version: "^0.1"
+    override_path: ../mosaico_module_mgr

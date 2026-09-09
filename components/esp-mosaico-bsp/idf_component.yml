@@ -17,7 +17,7 @@ dependencies:
 
   # Local fork with Sleep In / Deep Standby helpers. Do not use registry copy.
   espressif/esp_lcd_co5300:
-    path: ../esp_lcd_co5300
+    override_path: ../esp_lcd_co5300
     public: true
     version: "2.2.0"
 
@@ -26,7 +26,7 @@ dependencies:
     public: true
 
   espressif/spi_nand_flash:
-    version: "1.3.0"
+    version: "^1.3.0"
     public: true
 
   espressif/esp_codec_dev:
@@ -46,5 +46,5 @@ dependencies:
     public: true
 
   espressif/bq27220:
-    version: "0.1.1~1"
+    version: "^0.1.1~1"
     public: true
