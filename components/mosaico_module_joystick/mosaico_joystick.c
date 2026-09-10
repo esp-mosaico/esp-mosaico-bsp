@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "mosaico_joystick.h"
+#include "mosaico_module_joystick.h"
 
 #include <limits.h>
 #include <math.h>
@@ -47,11 +47,22 @@ typedef struct {
     uint64_t since_ms;
 } stable_window_t;
 
+typedef struct {
+    gpio_num_t io;
+    bool active_high;
+} joystick_button_hardware_t;
+
+typedef struct {
+    gpio_num_t x_io;
+    gpio_num_t y_io;
+    joystick_button_hardware_t buttons[MOSAICO_JOYSTICK_BUTTON_COUNT];
+} joystick_hardware_t;
+
 struct mosaico_joystick_t {
     mosaico_joystick_config_t config;
     mosaico_module_mgr_slot_t slot;
     uint32_t claim_generation;
-    bsp_subboard_joystick_config_t hardware;
+    joystick_hardware_t hardware;
     adc_unit_t unit_x;
     adc_unit_t unit_y;
     adc_channel_t channel_x;
@@ -171,6 +182,25 @@ static esp_err_t validate_config(const mosaico_joystick_config_t *config)
             config->idle_recenter_ms > 0 && config->min_range_warning >= 0 &&
             config->min_span_finish > 0,
         ESP_ERR_INVALID_ARG, TAG, "invalid joystick configuration");
+    return ESP_OK;
+}
+
+static esp_err_t get_hardware_config(bsp_subboard_slot_t slot, joystick_hardware_t *out_config)
+{
+    ESP_RETURN_ON_FALSE(out_config && slot >= BSP_SUBBOARD_SLOT_LEFT && slot < BSP_SUBBOARD_SLOT_COUNT,
+                        ESP_ERR_INVALID_ARG, TAG, "invalid joystick slot");
+
+    *out_config = (joystick_hardware_t) {
+        .x_io = bsp_subboard_map_gpio(slot, GPIO_NUM_48),
+        .y_io = bsp_subboard_map_gpio(slot, GPIO_NUM_53),
+        .buttons = {
+            {bsp_subboard_map_gpio(slot, GPIO_NUM_16), true},
+            {bsp_subboard_map_gpio(slot, GPIO_NUM_4), false},
+            {bsp_subboard_map_gpio(slot, GPIO_NUM_15), false},
+            {bsp_subboard_map_gpio(slot, GPIO_NUM_12), false},
+            {bsp_subboard_map_gpio(slot, GPIO_NUM_13), false},
+        },
+    };
     return ESP_OK;
 }
 
@@ -343,12 +373,6 @@ static void update_normalized(mosaico_joystick_handle_t handle)
                              cal->max_x, handle->config.deadzone);
     float y = normalize_axis(handle->data.raw_y, cal->min_y, cal->center_y,
                              cal->max_y, handle->config.deadzone);
-    if (handle->hardware.invert_x) {
-        x = -x;
-    }
-    if (handle->hardware.invert_y) {
-        y = -y;
-    }
     const float magnitude_squared = x * x + y * y;
     if (magnitude_squared > 1.0f) {
         const float scale = 1.0f / sqrtf(magnitude_squared);
@@ -483,8 +507,7 @@ static esp_err_t configure_hardware(mosaico_joystick_handle_t handle)
     ESP_RETURN_ON_ERROR(ret, TAG, "configure joystick ADC channel failed");
 
     for (size_t i = 0; i < MOSAICO_JOYSTICK_BUTTON_COUNT; ++i) {
-        const bsp_subboard_joystick_button_config_t *button =
-            &handle->hardware.buttons[i];
+        const joystick_button_hardware_t *button = &handle->hardware.buttons[i];
         const gpio_config_t button_config = {
             .pin_bit_mask = BIT64(button->io),
             .mode = GPIO_MODE_INPUT,
@@ -574,8 +597,7 @@ esp_err_t mosaico_joystick_new(const mosaico_joystick_config_t *config,
     }
     handle->claim_generation = info.generation;
 
-    ret = bsp_subboard_joystick_get_config((bsp_subboard_slot_t)handle->slot,
-                                           &handle->hardware);
+    ret = get_hardware_config((bsp_subboard_slot_t)handle->slot, &handle->hardware);
     if (ret != ESP_OK) {
         goto fail;
     }
@@ -586,7 +608,7 @@ esp_err_t mosaico_joystick_new(const mosaico_joystick_config_t *config,
     begin_calibration(handle);
     ESP_LOGI(TAG, "Joystick opened: slot=%s eeprom=0x%02X X=%d Y=%d",
              mosaico_module_mgr_slot_to_name(handle->slot),
-             handle->hardware.eeprom_addr, handle->hardware.x_io,
+             info.eeprom_addr, handle->hardware.x_io,
              handle->hardware.y_io);
     *out_handle = handle;
     return ESP_OK;
@@ -632,8 +654,7 @@ static esp_err_t update_locked(mosaico_joystick_handle_t handle)
     handle->data.raw_x = (int)(sum_x / handle->config.oversample);
     handle->data.raw_y = (int)(sum_y / handle->config.oversample);
     for (size_t i = 0; i < MOSAICO_JOYSTICK_BUTTON_COUNT; ++i) {
-        const bsp_subboard_joystick_button_config_t *button =
-            &handle->hardware.buttons[i];
+        const joystick_button_hardware_t *button = &handle->hardware.buttons[i];
         const int level = gpio_get_level(button->io);
         handle->data.buttons[i] =
             button->active_high ? level != 0 : level == 0;

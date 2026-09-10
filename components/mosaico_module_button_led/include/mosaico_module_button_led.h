@@ -15,12 +15,12 @@
 extern "C" {
 #endif
 
-#define MOSAICO_BUTTON_LED_COUNT           3U
+#define MOSAICO_BUTTON_LED_COUNT 3U
 
-#define MOSAICO_BUTTON_LED_DEFAULT_CONFIG() {            \
-    .slot = MOSAICO_MODULE_MGR_SLOT_AUTO,                  \
-    .discovery_timeout_ms = 1500,                        \
-    .led_brightness = 32,                                \
+#define MOSAICO_BUTTON_LED_DEFAULT_CONFIG() { \
+    .slot = MOSAICO_MODULE_MGR_SLOT_AUTO,      \
+    .discovery_timeout_ms = 1500,              \
+    .led_brightness = 32,                      \
 }
 
 typedef struct mosaico_button_led_t *mosaico_button_led_handle_t;

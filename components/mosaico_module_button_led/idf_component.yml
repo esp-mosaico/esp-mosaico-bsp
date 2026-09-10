@@ -6,10 +6,11 @@ targets:
   - esp32s31
 
 dependencies:
-  idf: ">=5.5"
+  idf: ">=6.2"
 
   mosaico_module_mgr:
     version: "^0.1"
+    public: true
     override_path: ../mosaico_module_mgr
 
   espressif/led_strip: "^3.0.3"

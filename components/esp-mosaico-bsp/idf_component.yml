@@ -9,28 +9,24 @@ tags:
   - bsp
 
 dependencies:
-  idf: ">=6.1"
+  idf: ">=6.2"
 
   espressif/esp_lvgl_adapter:
     version: "0.6.2"
     public: true
+    rules:
+      - if: $CONFIG{BSP_DISPLAY_ENABLE} == True
 
-  # Local fork with Sleep In / Deep Standby helpers. Do not use registry copy.
-  espressif/esp_lcd_co5300:
-    override_path: ../esp_lcd_co5300
-    public: true
-    version: "2.2.0"
+  espressif/esp_lcd_co5300: ^2.2
 
-  waveshare/esp_lcd_touch_cst9217:
-    version: "^1.0.4"
-    public: true
+  espressif/esp_lcd_touch_cst9220: ^0.1
 
   espressif/spi_nand_flash:
     version: "^1.3.0"
     public: true
 
   espressif/esp_codec_dev:
-    version: "2.0.0-beta2"
+    version: "~1.6"
     public: true
 
   espressif/button:

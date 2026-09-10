@@ -6,7 +6,7 @@ targets:
   - esp32s31
 
 dependencies:
-  idf: ">=5.5"
+  idf: ">=6.2"
 
   mosaico_interaction:
     override_path: ../mosaico_interaction

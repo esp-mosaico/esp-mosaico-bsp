@@ -8,7 +8,6 @@
 #include <stdint.h>
 #include "driver/spi_master.h"
 #include "esp_err.h"
-#include "sdkconfig.h"
 #include "spi_nand_flash.h"
 
 #ifdef __cplusplus
@@ -28,18 +27,12 @@ typedef struct {
     uint8_t flags;
 } bsp_nand_flash_config_t;
 
-#if CONFIG_BSP_NAND_USE_QIO
-#define BSP_NAND_FLASH_DEFAULT_IO_MODE SPI_NAND_IO_MODE_QIO
-#else
-#define BSP_NAND_FLASH_DEFAULT_IO_MODE SPI_NAND_IO_MODE_SIO
-#endif
-
 #define BSP_NAND_FLASH_DEFAULT_CONFIG() {                     \
     .clock_speed_hz = BSP_NAND_FLASH_DEFAULT_CLOCK_HZ,        \
     .queue_size = BSP_NAND_FLASH_DEFAULT_QUEUE_SIZE,          \
     .max_transfer_sz = BSP_NAND_FLASH_DEFAULT_MAX_TRANSFER_SZ,\
     .gc_factor = 0,                                           \
-    .io_mode = BSP_NAND_FLASH_DEFAULT_IO_MODE,                \
+    .io_mode = SPI_NAND_IO_MODE_QIO,                \
     .flags = SPI_DEVICE_HALFDUPLEX,                           \
 }
 

@@ -20,7 +20,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "linux/videodev2.h"
-#include "mosaico_camera.h"
+#include "mosaico_module_camera.h"
 
 #define PREVIEW_WIDTH              BSP_LCD_H_RES
 #define PREVIEW_HEIGHT             BSP_LCD_V_RES
@@ -139,9 +139,23 @@ static esp_err_t camera_wait_and_open(void)
     config.allow_unidentified = true;
 
     while (true) {
-        const esp_err_t ret = mosaico_camera_new(&config, &s_preview.camera);
+        esp_err_t ret = mosaico_camera_new(&config, &s_preview.camera);
+        if (ret == ESP_OK) {
+            ret = mosaico_camera_open(s_preview.camera);
+        }
+        if (ret == ESP_OK) {
+            ret = mosaico_camera_start_stream(s_preview.camera);
+        }
         if (ret == ESP_OK) {
             return ESP_OK;
+        }
+        if (s_preview.camera) {
+            const esp_err_t cleanup_ret = mosaico_camera_del(s_preview.camera);
+            if (cleanup_ret == ESP_OK) {
+                s_preview.camera = NULL;
+            } else {
+                return cleanup_ret;
+            }
         }
         ESP_LOGW(TAG, "Opening the camera in the LEFT slot failed, retrying: %s",
                  esp_err_to_name(ret));
@@ -327,6 +341,8 @@ void app_main(void)
         ESP_LOGW(
             TAG, "Preview stopped: %s; waiting for camera reconnect",
             esp_err_to_name(ret));
+        ESP_ERROR_CHECK(mosaico_camera_stop_stream(s_preview.camera));
+        ESP_ERROR_CHECK(mosaico_camera_close(s_preview.camera));
         ESP_ERROR_CHECK(mosaico_camera_del(s_preview.camera));
         s_preview.camera = NULL;
         vTaskDelay(pdMS_TO_TICKS(CAMERA_RETRY_DELAY_MS));

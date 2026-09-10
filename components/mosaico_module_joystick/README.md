@@ -1,4 +1,4 @@
-# Mosaico joystick
+# Mosaico joystick module
 
 Application-facing driver for the ESP-Mosaico Joystick Board.
 
@@ -9,6 +9,8 @@ each periodic `mosaico_joystick_read()` call samples the hardware, advances
 calibration, and returns the latest snapshot.
 
 ```c
+#include "mosaico_module_joystick.h"
+
 mosaico_joystick_handle_t joystick;
 mosaico_joystick_config_t config = MOSAICO_JOYSTICK_DEFAULT_CONFIG();
 config.slot = MOSAICO_MODULE_MGR_SLOT_AUTO;

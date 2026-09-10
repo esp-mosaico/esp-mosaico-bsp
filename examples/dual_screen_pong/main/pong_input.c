@@ -10,7 +10,7 @@
 #include <string.h>
 
 #include "esp_log.h"
-#include "mosaico_joystick.h"
+#include "mosaico_module_joystick.h"
 
 #define REDISCOVERY_INTERVAL_MS 1000U
 #define FILTER_FAST_THRESHOLD   0.25f

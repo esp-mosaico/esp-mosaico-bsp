@@ -4,13 +4,24 @@
  */
 
 #include "bsp/esp_mosaico.h"
+#include <stdint.h>
 #include "driver/ledc.h"
 #include "esp_check.h"
+#include "esp_efuse.h"
+#include "esp_efuse_table.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
+#include "soc/gpio_reg.h"
+#include "soc/soc.h"
+
+#define BSP_HW_VERSION(major, minor) ((uint16_t)(((uint16_t)(major) << 8) | ((uint16_t)(minor) & 0xFFU)))
+#define BSP_HW_VERSION_MAJOR(version) ((uint8_t)((version) >> 8))
+#define BSP_HW_VERSION_MINOR(version) ((uint8_t)((version) & 0xFFU))
 
 static const char *TAG = "S31-Mosaico";
 static i2c_master_bus_handle_t s_i2c_bus;
+static bsp_board_variant_t s_variant = BSP_BOARD_VARIANT_V1_0;
+static bool s_variant_detected;
 static bool s_power_initialized;
 static bool s_vcc_3v3_on;
 static bool s_led_initialized;
@@ -18,6 +29,48 @@ static bool s_motor_initialized;
 #if CONFIG_BSP_MOTOR_ENABLE_PWM
 static bool s_motor_pwm_initialized;
 #endif
+
+static esp_err_t detect_board_variant(void)
+{
+    if (s_variant_detected) {
+        return ESP_OK;
+    }
+
+    uint16_t version = 0;
+    ESP_RETURN_ON_ERROR(esp_efuse_read_field_blob(ESP_EFUSE_USER_DATA, &version, sizeof(version) * 8U), TAG,
+                        "read hardware version from eFuse failed");
+    switch (version) {
+    case BSP_HW_VERSION(1, 0):
+        s_variant = BSP_BOARD_VARIANT_V1_0;
+        break;
+    case BSP_HW_VERSION(1, 1):
+    case BSP_HW_VERSION(1, 2):
+        s_variant = BSP_BOARD_VARIANT_V1_2;
+        break;
+    default:
+        ESP_LOGE(TAG, "Unsupported hardware version: v%u.%u (raw=0x%04X)", BSP_HW_VERSION_MAJOR(version),
+                 BSP_HW_VERSION_MINOR(version), (unsigned)version);
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    s_variant_detected = true;
+    ESP_LOGI(TAG, "Hardware version: v%u.%u (variant=v1.%u)", BSP_HW_VERSION_MAJOR(version),
+             BSP_HW_VERSION_MINOR(version), s_variant == BSP_BOARD_VARIANT_V1_0 ? 0U : 2U);
+    return ESP_OK;
+}
+
+esp_err_t bsp_board_variant_get(bsp_board_variant_t *variant)
+{
+    ESP_RETURN_ON_FALSE(variant, ESP_ERR_INVALID_ARG, TAG, "board variant output is null");
+    ESP_RETURN_ON_ERROR(detect_board_variant(), TAG, "detect board variant failed");
+    *variant = s_variant;
+    return ESP_OK;
+}
+
+static bool is_v1_0(void)
+{
+    return s_variant == BSP_BOARD_VARIANT_V1_0;
+}
 
 static esp_err_t configure_output(gpio_num_t pin, int level)
 {
@@ -33,6 +86,17 @@ static esp_err_t configure_output(gpio_num_t pin, int level)
     ESP_RETURN_ON_ERROR(gpio_set_level(pin, level), TAG, "preset GPIO%d level failed", pin);
     ESP_RETURN_ON_ERROR(gpio_config(&config), TAG, "configure GPIO%d failed", pin);
     return ESP_OK;
+}
+
+static int get_configured_output_level(gpio_num_t pin)
+{
+    const uint32_t bit = BIT(pin < 32 ? pin : pin - 32);
+    const uint32_t enable_reg = pin < 32 ? GPIO_ENABLE_REG : GPIO_ENABLE1_REG;
+    const uint32_t output_reg = pin < 32 ? GPIO_OUT_REG : GPIO_OUT1_REG;
+    if ((REG_READ(enable_reg) & bit) == 0) {
+        return -1;
+    }
+    return (REG_READ(output_reg) & bit) != 0;
 }
 
 static esp_err_t configure_open_drain_output(gpio_num_t pin, int level)
@@ -56,15 +120,18 @@ esp_err_t bsp_i2c_init(void)
     if (s_i2c_bus) {
         return ESP_OK;
     }
+    ESP_RETURN_ON_ERROR(detect_board_variant(), TAG, "detect board variant failed");
+    const gpio_num_t sda = is_v1_0() ? BSP_I2C_SDA_V1_0 : BSP_I2C_SDA_V1_2;
+    const gpio_num_t scl = is_v1_0() ? BSP_I2C_SCL_V1_0 : BSP_I2C_SCL_V1_2;
     const i2c_master_bus_config_t config = {
         .i2c_port = BSP_I2C_PORT,
         .clk_source = I2C_CLK_SRC_DEFAULT,
-        .sda_io_num = BSP_I2C_SDA,
-        .scl_io_num = BSP_I2C_SCL,
+        .sda_io_num = sda,
+        .scl_io_num = scl,
         .flags.enable_internal_pullup = true,
     };
-    ESP_RETURN_ON_ERROR(i2c_new_master_bus(&config, &s_i2c_bus), TAG, "create shared I2C bus failed");
-    ESP_LOGI(TAG, "Shared I2C initialized: port=%d SDA=%d SCL=%d", BSP_I2C_PORT, BSP_I2C_SDA, BSP_I2C_SCL);
+    ESP_RETURN_ON_ERROR(i2c_new_master_bus(&config, &s_i2c_bus), TAG, "create mainboard I2C bus failed");
+    ESP_LOGI(TAG, "Mainboard I2C initialized: port=%d SDA=%d SCL=%d", BSP_I2C_PORT, sda, scl);
     return ESP_OK;
 }
 
@@ -78,28 +145,37 @@ esp_err_t bsp_power_init(void)
     if (s_power_initialized) {
         return ESP_OK;
     }
-    /* Deep-sleep pad holds survive wake-up on ESP32-S31. Program known-safe
-     * inactive states before releasing a retained state to avoid a level
-     * glitch during boot. */
-    ESP_RETURN_ON_ERROR(configure_output(BSP_POWER_VCC_3V3_CTRL, BSP_POWER_VCC_3V3_OFF_LEVEL), TAG,
+    ESP_RETURN_ON_ERROR(detect_board_variant(), TAG, "detect board variant failed");
+    /* Preserve levels established by an earlier boot stage. Unconfigured rails start off. */
+    int vcc_level = get_configured_output_level(BSP_POWER_VCC_3V3_CTRL);
+    const bool vcc_adopted = vcc_level >= 0;
+    if (!vcc_adopted) {
+        vcc_level = BSP_POWER_VCC_3V3_OFF_LEVEL;
+    }
+    ESP_RETURN_ON_ERROR(configure_output(BSP_POWER_VCC_3V3_CTRL, vcc_level), TAG,
                         "configure VCC_3V3 power failed");
-    ESP_RETURN_ON_ERROR(configure_output(BSP_POWER_CODEC_3V3_CTRL, BSP_POWER_CODEC_3V3_OFF_LEVEL), TAG,
-                        "configure codec 3V3 power failed");
+    if (is_v1_0()) {
+        int codec_level = get_configured_output_level(BSP_POWER_CODEC_3V3_CTRL_V1_0);
+        if (codec_level < 0) {
+            codec_level = BSP_POWER_CODEC_3V3_OFF_LEVEL;
+        }
+        ESP_RETURN_ON_ERROR(configure_output(BSP_POWER_CODEC_3V3_CTRL_V1_0, codec_level), TAG,
+                            "configure codec 3V3 power failed");
+    }
     ESP_RETURN_ON_ERROR(configure_open_drain_output(BSP_POWER_SWITCH_GPIO,
                                                     BSP_POWER_SWITCH_RELEASE_LEVEL), TAG,
                         "configure shutdown signal failed");
     ESP_RETURN_ON_ERROR(gpio_hold_dis(BSP_POWER_VCC_3V3_CTRL), TAG,
                         "release VCC_3V3 GPIO hold failed");
-    ESP_RETURN_ON_ERROR(gpio_hold_dis(BSP_POWER_CODEC_3V3_CTRL), TAG,
-                        "release codec GPIO hold failed");
+    if (is_v1_0()) {
+        ESP_RETURN_ON_ERROR(gpio_hold_dis(BSP_POWER_CODEC_3V3_CTRL_V1_0), TAG, "release codec GPIO hold failed");
+    }
     ESP_RETURN_ON_ERROR(gpio_hold_dis(BSP_POWER_SWITCH_GPIO), TAG,
                         "release shutdown GPIO hold failed");
-    s_vcc_3v3_on = false;
+    s_vcc_3v3_on = vcc_level == BSP_POWER_VCC_3V3_ON_LEVEL;
     s_power_initialized = true;
-    ESP_LOGI(TAG, "Power controls initialized: VCC_PW GPIO%d=%d CODEC_PW GPIO%d=%d "
-                  "PWR_SW GPIO%d=released(open-drain)",
-             BSP_POWER_VCC_3V3_CTRL, BSP_POWER_VCC_3V3_OFF_LEVEL,
-             BSP_POWER_CODEC_3V3_CTRL, BSP_POWER_CODEC_3V3_OFF_LEVEL,
+    ESP_LOGI(TAG, "Power controls initialized: VCC_PW GPIO%d=%d(%s) CODEC_PW=%s PWR_SW GPIO%d=released(open-drain)",
+             BSP_POWER_VCC_3V3_CTRL, vcc_level, vcc_adopted ? "adopted" : "default", is_v1_0() ? "GPIO56" : "always-on",
              BSP_POWER_SWITCH_GPIO);
     return ESP_OK;
 }
@@ -188,10 +264,13 @@ esp_err_t bsp_power_set_vcc_3v3(bool on)
 esp_err_t bsp_power_set_codec_3v3(bool on)
 {
     ESP_RETURN_ON_ERROR(bsp_power_init(), TAG, "power init failed");
+    if (!is_v1_0()) {
+        return ESP_OK;
+    }
     const int level = on ? BSP_POWER_CODEC_3V3_ON_LEVEL : BSP_POWER_CODEC_3V3_OFF_LEVEL;
-    ESP_RETURN_ON_ERROR(gpio_set_level(BSP_POWER_CODEC_3V3_CTRL, level), TAG, "set codec 3V3 power failed");
+    ESP_RETURN_ON_ERROR(gpio_set_level(BSP_POWER_CODEC_3V3_CTRL_V1_0, level), TAG, "set codec 3V3 power failed");
     ESP_LOGI(TAG, "Codec 3V3 power %s: CODEC_PW GPIO%d=%d", on ? "on" : "off",
-             BSP_POWER_CODEC_3V3_CTRL, level);
+             BSP_POWER_CODEC_3V3_CTRL_V1_0, level);
     return ESP_OK;
 }
 
@@ -209,7 +288,9 @@ esp_err_t bsp_power_set_shutdown(bool shutdown)
 esp_err_t bsp_power_prepare_sleep(void)
 {
     esp_err_t first_error = ESP_OK;
+    esp_err_t ret;
 
+#if CONFIG_BSP_DISPLAY_ENABLE
     if (bsp_display_get_panel()) {
         esp_err_t ret = bsp_display_enter_deep_standby();
         if (ret != ESP_OK) {
@@ -223,13 +304,14 @@ esp_err_t bsp_power_prepare_sleep(void)
     }
 
     /* Float CS even when the panel was never initialized: it is still on VCC_3V3. */
-    esp_err_t ret = bsp_display_isolate_cs();
+    ret = bsp_display_isolate_cs();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "isolate LCD CS failed: %s", esp_err_to_name(ret));
         if (first_error == ESP_OK) {
             first_error = ret;
         }
     }
+#endif
 
     ret = bsp_nand_flash_enter_power_save();
     if (ret != ESP_OK) {
@@ -240,7 +322,11 @@ esp_err_t bsp_power_prepare_sleep(void)
     }
 
     if (first_error == ESP_OK) {
+#if CONFIG_BSP_DISPLAY_ENABLE
         ESP_LOGI(TAG, "Peripherals prepared for sleep (CO5300 DSTBON + LCD CS floating + NAND standby when available)");
+#else
+        ESP_LOGI(TAG, "Peripherals prepared for sleep (NAND standby when available)");
+#endif
     }
     return first_error;
 }
@@ -260,9 +346,11 @@ void bsp_power_enter_deep_sleep(void)
         ESP_LOGW(TAG, "VCC_3V3 already off; skipping peripheral sleep prepare");
     }
     ESP_ERROR_CHECK(gpio_hold_en(BSP_POWER_VCC_3V3_CTRL));
-    ESP_ERROR_CHECK(gpio_hold_en(BSP_POWER_CODEC_3V3_CTRL));
+    if (is_v1_0()) {
+        ESP_ERROR_CHECK(gpio_hold_en(BSP_POWER_CODEC_3V3_CTRL_V1_0));
+    }
     ESP_ERROR_CHECK(gpio_hold_en(BSP_POWER_SWITCH_GPIO));
-    ESP_LOGI(TAG, "Entering deep sleep; GPIO60/GPIO56/GPIO57 states retained");
+    ESP_LOGI(TAG, "Entering deep sleep; power control GPIO states retained");
     esp_deep_sleep_start();
 }
 
@@ -290,7 +378,9 @@ esp_err_t bsp_led_init(void)
     if (s_led_initialized) {
         return ESP_OK;
     }
-    ESP_RETURN_ON_ERROR(configure_output(BSP_LED_STATUS_GPIO, BSP_LED_OFF_LEVEL), TAG,
+    ESP_RETURN_ON_ERROR(detect_board_variant(), TAG, "detect board variant failed");
+    ESP_RETURN_ON_FALSE(is_v1_0(), ESP_ERR_NOT_SUPPORTED, TAG, "status LED is unavailable on v1.2");
+    ESP_RETURN_ON_ERROR(configure_output(BSP_LED_STATUS_GPIO_V1_0, BSP_LED_OFF_LEVEL), TAG,
                         "initialize status LED failed");
     s_led_initialized = true;
     return ESP_OK;
@@ -299,7 +389,7 @@ esp_err_t bsp_led_init(void)
 esp_err_t bsp_led_set(bool on)
 {
     ESP_RETURN_ON_ERROR(bsp_led_init(), TAG, "LED init failed");
-    return gpio_set_level(BSP_LED_STATUS_GPIO, on ? BSP_LED_ON_LEVEL : BSP_LED_OFF_LEVEL);
+    return gpio_set_level(BSP_LED_STATUS_GPIO_V1_0, on ? BSP_LED_ON_LEVEL : BSP_LED_OFF_LEVEL);
 }
 
 esp_err_t bsp_motor_init(void)

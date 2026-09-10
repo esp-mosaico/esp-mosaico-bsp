@@ -17,11 +17,11 @@ extern "C" {
 #endif
 
 #define MOSAICO_CAMERA_DEFAULT_CONFIG() {                        \
-    .slot = MOSAICO_MODULE_MGR_SLOT_AUTO,                          \
+    .slot = MOSAICO_MODULE_MGR_SLOT_AUTO,                        \
     .width = 1024,                                               \
     .height = 768,                                               \
     .pixel_format = MOSAICO_CAMERA_PIXEL_FORMAT_UYVY,            \
-    .buffer_count = 4,                                           \
+    .buffer_count = 2,                                           \
     .frame_timeout_ms = 1000,                                    \
     .discovery_timeout_ms = 1500,                                \
     .apply_module_tuning = true,                                 \
@@ -88,13 +88,25 @@ typedef struct {
 } mosaico_camera_pipeline_stats_t;
 
 /**
- * @brief Discover, claim and start the Mosaico OV3640 camera subboard
+ * @brief Discover, claim and register a Mosaico camera subboard
  *
- * Pass NULL for automatic defaults. The default path discovers the camera,
- * selects its supported slot, claims shared resources and starts streaming.
+ * Pass NULL for automatic defaults. Call mosaico_camera_open() and
+ * mosaico_camera_start_stream() before requesting frames.
  */
 esp_err_t mosaico_camera_new(const mosaico_camera_config_t *config,
                              mosaico_camera_handle_t *out_camera);
+
+/** @brief Open the registered video device and allocate capture buffers. */
+esp_err_t mosaico_camera_open(mosaico_camera_handle_t camera);
+
+/** @brief Start capture and discard stale startup frames. */
+esp_err_t mosaico_camera_start_stream(mosaico_camera_handle_t camera);
+
+/** @brief Stop capture after every borrowed frame has been returned. */
+esp_err_t mosaico_camera_stop_stream(mosaico_camera_handle_t camera);
+
+/** @brief Release capture buffers while keeping the video device registered. */
+esp_err_t mosaico_camera_close(mosaico_camera_handle_t camera);
 
 esp_err_t mosaico_camera_get_info(mosaico_camera_handle_t camera,
                                   mosaico_camera_info_t *out_info);

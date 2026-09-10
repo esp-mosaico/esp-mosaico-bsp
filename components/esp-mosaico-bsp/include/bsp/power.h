@@ -23,6 +23,8 @@ esp_err_t bsp_power_init(void);
  * that match the current state return without repeating the ramp.
  */
 esp_err_t bsp_power_set_vcc_3v3(bool on);
+
+/** Control the v1.0 codec rail. This is a no-op on v1.2, where the codec rail is not GPIO-controlled. */
 esp_err_t bsp_power_set_codec_3v3(bool on);
 
 /**
@@ -51,8 +53,8 @@ esp_err_t bsp_power_prepare_sleep(void);
 /**
  * @brief Enter deep sleep while retaining the board power-control GPIO states
  *
- * Calls `bsp_power_prepare_sleep()` first, then holds GPIO60/56/57 and starts
- * deep sleep. Wake sources, if required, must be configured by the caller
+ * Calls `bsp_power_prepare_sleep()` first, then holds the active power-control
+ * GPIOs and starts deep sleep. Wake sources, if required, must be configured by the caller
  * before invoking this function. If no wake source is configured, reset or a
  * power cycle is required. This function does not return.
  */

@@ -60,13 +60,18 @@ static esp_err_t battery_attach(void)
     if (s_gauge) {
         return ESP_OK;
     }
+    bsp_board_variant_t variant;
+    ESP_RETURN_ON_ERROR(bsp_board_variant_get(&variant), TAG, "get board variant failed");
+    const bool v1_0 = variant == BSP_BOARD_VARIANT_V1_0;
     ESP_RETURN_ON_ERROR(bsp_i2c_init(), TAG, "shared I2C init failed");
 
     if (!s_battery_bus) {
+        const gpio_num_t sda = v1_0 ? BSP_I2C_SDA_V1_0 : BSP_I2C_SDA_V1_2;
+        const gpio_num_t scl = v1_0 ? BSP_I2C_SCL_V1_0 : BSP_I2C_SCL_V1_2;
         const i2c_config_t bus_config = {
             .mode = I2C_MODE_MASTER,
-            .sda_io_num = BSP_I2C_SDA,
-            .scl_io_num = BSP_I2C_SCL,
+            .sda_io_num = sda,
+            .scl_io_num = scl,
             .sda_pullup_en = GPIO_PULLUP_ENABLE,
             .scl_pullup_en = GPIO_PULLUP_ENABLE,
             .master.clk_speed = BSP_BATTERY_I2C_SPEED_HZ,
@@ -92,7 +97,8 @@ static esp_err_t battery_attach(void)
 
     const uint16_t voltage_mv = bq27220_get_voltage(s_gauge);
     ESP_LOGI(TAG, "BQ27220 online: address=0x%02X SDA=%d SCL=%d %u mV", BSP_BATTERY_I2C_ADDR,
-             BSP_I2C_SDA, BSP_I2C_SCL, voltage_mv);
+             v1_0 ? BSP_I2C_SDA_V1_0 : BSP_I2C_SDA_V1_2,
+             v1_0 ? BSP_I2C_SCL_V1_0 : BSP_I2C_SCL_V1_2, voltage_mv);
     ESP_LOGI(TAG, "BQ27220 default profile active: %u mAh EDV=%u/%u/%u mV", s_default_cedv.design_cap,
              s_default_cedv.EDV0, s_default_cedv.EDV1, s_default_cedv.EDV2);
     return ESP_OK;

@@ -17,19 +17,19 @@ extern "C" {
 
 #define MOSAICO_JOYSTICK_BUTTON_COUNT 5U
 
-#define MOSAICO_JOYSTICK_DEFAULT_CONFIG() { \
-    .slot = MOSAICO_MODULE_MGR_SLOT_AUTO,     \
-    .discovery_timeout_ms = 1500,           \
-    .oversample = 4,                        \
-    .deadzone = 0.08f,                      \
-    .circle_ms = 8000,                      \
-    .center_ms = 1500,                      \
-    .center_max_ms = 4500,                  \
-    .stable_span = 60,                      \
-    .center_stable_span = 120,              \
-    .idle_recenter_ms = 1500,               \
-    .min_range_warning = 80,                \
-    .min_span_finish = 40,                  \
+#define MOSAICO_JOYSTICK_DEFAULT_CONFIG() {   \
+    .slot = MOSAICO_MODULE_MGR_SLOT_AUTO,      \
+    .discovery_timeout_ms = 1500,              \
+    .oversample = 4,                           \
+    .deadzone = 0.08f,                         \
+    .circle_ms = 8000,                         \
+    .center_ms = 1500,                         \
+    .center_max_ms = 4500,                     \
+    .stable_span = 60,                         \
+    .center_stable_span = 120,                 \
+    .idle_recenter_ms = 1500,                  \
+    .min_range_warning = 80,                   \
+    .min_span_finish = 40,                     \
 }
 
 typedef struct mosaico_joystick_t *mosaico_joystick_handle_t;

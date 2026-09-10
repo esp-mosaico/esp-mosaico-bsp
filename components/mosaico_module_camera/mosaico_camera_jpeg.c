@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "mosaico_camera.h"
+#include "mosaico_module_camera.h"
 
 #include <inttypes.h>
 #include <stdlib.h>

@@ -10,7 +10,7 @@
 #include "esp_check.h"
 #include "esp_lcd_co5300.h"
 #include "esp_lcd_panel_io.h"
-#include "esp_lcd_touch_cst9217.h"
+#include "esp_lcd_touch_cst9220.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
 
@@ -147,11 +147,11 @@ static bool rotation_is_valid(bsp_display_rotation_t rotation)
            rotation == BSP_DISPLAY_ROTATE_180 || rotation == BSP_DISPLAY_ROTATE_270;
 }
 
-static esp_err_t apply_qspi_bus_drive_cap(void)
+static esp_err_t apply_qspi_bus_drive_cap(gpio_num_t lcd_scl)
 {
     const gpio_drive_cap_t strength = (gpio_drive_cap_t)CONFIG_BSP_LCD_QSPI_DRIVE_CAP;
     const gpio_num_t pins[] = {
-        BSP_LCD_SCL, BSP_LCD_DATA0, BSP_LCD_DATA1, BSP_LCD_DATA2, BSP_LCD_DATA3,
+        lcd_scl, BSP_LCD_DATA0, BSP_LCD_DATA1, BSP_LCD_DATA2, BSP_LCD_DATA3,
     };
 
     for (size_t i = 0; i < sizeof(pins) / sizeof(pins[0]); ++i) {
@@ -208,14 +208,19 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
     ESP_RETURN_ON_FALSE(rotation_is_valid(active.rotation), ESP_ERR_INVALID_ARG, TAG,
                         "unsupported rotation %d", (int)active.rotation);
     ESP_RETURN_ON_ERROR(bsp_power_set_vcc_3v3(true), TAG, "enable VCC_3V3 rail failed");
+    bsp_board_variant_t variant;
+    ESP_RETURN_ON_ERROR(bsp_board_variant_get(&variant), TAG, "get board variant failed");
+    const bool v1_0 = variant == BSP_BOARD_VARIANT_V1_0;
+    const gpio_num_t lcd_scl = v1_0 ? BSP_LCD_SCL_V1_0 : BSP_LCD_SCL_V1_2;
+    const gpio_num_t lcd_rst = v1_0 ? BSP_LCD_RST_V1_0 : BSP_LCD_RST_V1_2;
 
     const spi_bus_config_t bus_config = CO5300_PANEL_BUS_QSPI_CONFIG(
-        BSP_LCD_SCL, BSP_LCD_DATA0, BSP_LCD_DATA1, BSP_LCD_DATA2, BSP_LCD_DATA3,
+        lcd_scl, BSP_LCD_DATA0, BSP_LCD_DATA1, BSP_LCD_DATA2, BSP_LCD_DATA3,
         BSP_LCD_H_RES * BSP_LCD_V_RES * BSP_LCD_BITS_PER_PIXEL / 8);
     ESP_RETURN_ON_ERROR(spi_bus_initialize(BSP_LCD_SPI_HOST, &bus_config, SPI_DMA_CH_AUTO), TAG,
                         "initialize CO5300 QSPI bus failed");
     s_spi_bus_initialized = true;
-    esp_err_t ret = apply_qspi_bus_drive_cap();
+    esp_err_t ret = apply_qspi_bus_drive_cap(lcd_scl);
     if (ret != ESP_OK) {
         spi_bus_free(BSP_LCD_SPI_HOST);
         s_spi_bus_initialized = false;
@@ -236,7 +241,7 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
         .flags.use_qspi_interface = true,
     };
     const esp_lcd_panel_dev_config_t panel_config = {
-        .reset_gpio_num = BSP_LCD_RST,
+        .reset_gpio_num = lcd_rst,
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = BSP_LCD_BITS_PER_PIXEL,
         .vendor_config = (void *)&vendor_config,
@@ -258,8 +263,8 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
     s_config = active;
     s_config_valid = true;
     *ret_panel = s_panel;
-    ESP_LOGI(TAG, "CO5300 initialized: %dx%d CS=%d SCL=%d D0=%d D1=%d D2=%d D3=%d drive=%d TE=%s(GPIO%d) gap=(%d,%d) rotation=%d",
-             BSP_LCD_H_RES, BSP_LCD_V_RES, BSP_LCD_CS, BSP_LCD_SCL, BSP_LCD_DATA0,
+    ESP_LOGI(TAG, "CO5300 initialized: %dx%d CS=%d SCL=%d RST=%d D0=%d D1=%d D2=%d D3=%d drive=%d TE=%s(GPIO%d) gap=(%d,%d) rotation=%d",
+             BSP_LCD_H_RES, BSP_LCD_V_RES, BSP_LCD_CS, lcd_scl, lcd_rst, BSP_LCD_DATA0,
              BSP_LCD_DATA1, BSP_LCD_DATA2, BSP_LCD_DATA3, CONFIG_BSP_LCD_QSPI_DRIVE_CAP,
              BSP_LCD_TE_STATE_TEXT, BSP_LCD_TE,
              BSP_LCD_X_GAP, BSP_LCD_Y_GAP, (int)active.rotation);
@@ -300,13 +305,13 @@ esp_err_t bsp_touch_new(bsp_display_rotation_t rotation, esp_lcd_touch_handle_t 
         .levels = {.reset = 0, .interrupt = 0},
         .flags = {.swap_xy = swap_xy, .mirror_x = mirror_x, .mirror_y = mirror_y},
     };
-    esp_lcd_panel_io_i2c_config_t io_config = ESP_LCD_TOUCH_IO_I2C_CST9217_CONFIG();
+    esp_lcd_panel_io_i2c_config_t io_config = ESP_LCD_TOUCH_IO_I2C_CST9220_CONFIG();
     io_config.scl_speed_hz = 400000;
     /* Left at 0 the transfer waits forever, and it runs under the LVGL lock. */
     io_config.transaction_timeout_ms = BSP_LCD_TOUCH_I2C_TIMEOUT_MS;
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_i2c(bsp_i2c_get_handle(), &io_config, &s_touch_io), TAG,
                         "create CST9217 panel IO failed");
-    esp_err_t ret = esp_lcd_touch_new_i2c_cst9217(s_touch_io, &touch_config, &s_touch);
+    esp_err_t ret = esp_lcd_touch_new_i2c_cst9220(s_touch_io, &touch_config, &s_touch);
     if (ret != ESP_OK) {
         esp_lcd_panel_io_del(s_touch_io);
         s_touch_io = NULL;
@@ -480,7 +485,7 @@ esp_err_t bsp_display_on(void)
                         "CO5300 is in Deep Standby; reset/re-init required");
 
     if (s_display_sleeping) {
-        ESP_RETURN_ON_ERROR(esp_lcd_panel_co5300_exit_sleep(s_panel), TAG, "CO5300 Sleep Out failed");
+        ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_sleep(s_panel, false), TAG, "CO5300 Sleep Out failed");
         s_display_sleeping = false;
     }
     ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, true), TAG, "turn on CO5300 failed");
@@ -514,7 +519,7 @@ esp_err_t bsp_display_off(void)
     ESP_RETURN_ON_ERROR(ret, TAG, "turn off CO5300 failed");
 
     if (!s_display_sleeping) {
-        ret = esp_lcd_panel_co5300_enter_sleep(s_panel);
+        ret = esp_lcd_panel_disp_sleep(s_panel, true);
         if (ret != ESP_OK && paused_here) {
             (void)esp_lcd_panel_disp_on_off(s_panel, true);
             (void)esp_lv_adapter_resume();
@@ -553,8 +558,6 @@ esp_err_t bsp_display_enter_deep_standby(void)
     }
 
     ESP_RETURN_ON_ERROR(bsp_display_off(), TAG, "prepare CO5300 Sleep In failed");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_co5300_enter_deep_standby(s_panel), TAG,
-                        "CO5300 Deep Standby failed");
     s_display_deep_standby = true;
     ESP_RETURN_ON_ERROR(bsp_display_isolate_cs(), TAG, "isolate LCD CS after Deep Standby failed");
     ESP_LOGI(TAG, "CO5300 entered Deep Standby");

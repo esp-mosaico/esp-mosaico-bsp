@@ -25,8 +25,8 @@
 #include "esp_jpeg_dec.h"
 #include "esp_jpeg_enc.h"
 #include "linux/videodev2.h"
-#include "mosaico_button_led.h"
-#include "mosaico_camera.h"
+#include "mosaico_module_button_led.h"
+#include "mosaico_module_camera.h"
 #include "mosaico_module_mgr.h"
 #include "photo_store.h"
 #include "photo_usb_msc.h"
@@ -353,12 +353,16 @@ static void subboard_event_callback(mosaico_module_mgr_event_t event,
 static esp_err_t init_subboard_manager(void)
 {
     const mosaico_module_mgr_config_t manager_config = {
-        .scan_period_ms = 200,
+        .scan_period_ms = 1000,
         .debounce_count = 3,
-        .event_callback = subboard_event_callback,
-        .event_user_data = NULL,
     };
-    return mosaico_module_mgr_init(&manager_config);
+    ESP_RETURN_ON_ERROR(mosaico_module_mgr_subscribe(subboard_event_callback, NULL), TAG, "subscribe module events failed");
+    const esp_err_t ret = mosaico_module_mgr_init(&manager_config);
+    if (ret != ESP_OK) {
+        (void)mosaico_module_mgr_unsubscribe(subboard_event_callback);
+        ESP_LOGE(TAG, "Initialize module manager failed: %s", esp_err_to_name(ret));
+    }
+    return ret;
 }
 
 static void button_subboard_task(void *arg)
@@ -480,9 +484,23 @@ static esp_err_t camera_wait_and_open(void)
     config.allow_unidentified = true;
 
     while (true) {
-        const esp_err_t ret = mosaico_camera_new(&config, &s_app.camera);
+        esp_err_t ret = mosaico_camera_new(&config, &s_app.camera);
+        if (ret == ESP_OK) {
+            ret = mosaico_camera_open(s_app.camera);
+        }
+        if (ret == ESP_OK) {
+            ret = mosaico_camera_start_stream(s_app.camera);
+        }
         if (ret == ESP_OK) {
             return ESP_OK;
+        }
+        if (s_app.camera) {
+            const esp_err_t cleanup_ret = mosaico_camera_del(s_app.camera);
+            if (cleanup_ret == ESP_OK) {
+                s_app.camera = NULL;
+            } else {
+                return cleanup_ret;
+            }
         }
         ESP_LOGW(TAG, "Opening the camera in the LEFT slot failed, retrying: %s",
                  esp_err_to_name(ret));
@@ -1214,6 +1232,8 @@ void app_main(void)
             log_app_state("app session stopped");
             if (s_app.camera) {
                 log_camera_pipeline("before camera delete");
+                ESP_ERROR_CHECK(mosaico_camera_stop_stream(s_app.camera));
+                ESP_ERROR_CHECK(mosaico_camera_close(s_app.camera));
                 ESP_ERROR_CHECK(mosaico_camera_del(s_app.camera));
                 s_app.camera = NULL;
             }
