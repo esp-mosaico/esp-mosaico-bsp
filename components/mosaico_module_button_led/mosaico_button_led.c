@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "mosaico_button_led.h"
+#include "mosaico_module_button_led.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -19,10 +19,17 @@
 
 static const char *TAG = "mosaico_btn_led";
 
+typedef struct {
+    gpio_num_t key1_io;
+    gpio_num_t key2_io;
+    gpio_num_t ws2812_io;
+    uint8_t eeprom_addr;
+} button_led_hardware_t;
+
 struct mosaico_button_led_t {
     mosaico_button_led_config_t config;
     mosaico_module_mgr_slot_t slot;
-    bsp_subboard_button_led_config_t hardware;
+    button_led_hardware_t hardware;
     led_strip_handle_t strip;
     SemaphoreHandle_t lock;
     bool subboard_claimed;
@@ -34,7 +41,23 @@ static uint8_t scale_channel(uint8_t value, uint8_t brightness)
     return (uint8_t)(((uint16_t)value * brightness) / 255U);
 }
 
-static esp_err_t configure_keys(const bsp_subboard_button_led_config_t *hardware)
+static esp_err_t get_hardware_config(bsp_subboard_slot_t slot, button_led_hardware_t *out_config)
+{
+    ESP_RETURN_ON_FALSE(out_config && slot >= BSP_SUBBOARD_SLOT_LEFT && slot < BSP_SUBBOARD_SLOT_COUNT,
+                        ESP_ERR_INVALID_ARG, TAG, "invalid button LED slot");
+
+    bsp_subboard_slot_config_t slot_config = {0};
+    ESP_RETURN_ON_ERROR(bsp_subboard_get_slot_config(slot, &slot_config), TAG, "get slot config failed");
+    *out_config = (button_led_hardware_t) {
+        .key1_io = bsp_subboard_map_gpio(slot, GPIO_NUM_12),
+        .key2_io = bsp_subboard_map_gpio(slot, GPIO_NUM_15),
+        .ws2812_io = bsp_subboard_map_gpio(slot, GPIO_NUM_4),
+        .eeprom_addr = slot_config.eeprom_addr,
+    };
+    return ESP_OK;
+}
+
+static esp_err_t configure_keys(const button_led_hardware_t *hardware)
 {
     const gpio_config_t cfg = {
         .pin_bit_mask = BIT64(hardware->key1_io) | BIT64(hardware->key2_io),
@@ -50,7 +73,7 @@ static esp_err_t create_led_strip(mosaico_button_led_handle_t handle)
 {
     const led_strip_config_t strip_config = {
         .strip_gpio_num = handle->hardware.ws2812_io,
-        .max_leds = handle->hardware.led_count,
+        .max_leds = MOSAICO_BUTTON_LED_COUNT,
         .led_model = LED_MODEL_WS2812,
         .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,
         .flags = {
@@ -69,7 +92,7 @@ static esp_err_t create_led_strip(mosaico_button_led_handle_t handle)
 
 static esp_err_t push_leds(mosaico_button_led_handle_t handle)
 {
-    for (uint8_t i = 0; i < handle->hardware.led_count; ++i) {
+    for (uint8_t i = 0; i < MOSAICO_BUTTON_LED_COUNT; ++i) {
         const mosaico_button_led_color_t color = handle->colors[i];
         ESP_RETURN_ON_ERROR(
             led_strip_set_pixel(handle->strip, i,
@@ -175,8 +198,7 @@ esp_err_t mosaico_button_led_new(const mosaico_button_led_config_t *config,
     }
     handle->subboard_claimed = true;
 
-    ret = bsp_subboard_button_led_get_config(
-        (bsp_subboard_slot_t)handle->slot, &handle->hardware);
+    ret = get_hardware_config((bsp_subboard_slot_t)handle->slot, &handle->hardware);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Resolve button LED pins failed: %s",
                  esp_err_to_name(ret));
@@ -231,7 +253,7 @@ esp_err_t mosaico_button_led_get_info(mosaico_button_led_handle_t handle,
     out_info->eeprom_addr = handle->hardware.eeprom_addr;
     out_info->key1_pressed = key1;
     out_info->key2_pressed = key2;
-    out_info->led_count = handle->hardware.led_count;
+    out_info->led_count = MOSAICO_BUTTON_LED_COUNT;
     return ESP_OK;
 }
 
@@ -262,7 +284,7 @@ esp_err_t mosaico_button_led_set_led(mosaico_button_led_handle_t handle,
                                      mosaico_button_led_color_t color)
 {
     ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, TAG, "handle is null");
-    ESP_RETURN_ON_FALSE(index < handle->hardware.led_count, ESP_ERR_INVALID_ARG,
+    ESP_RETURN_ON_FALSE(index < MOSAICO_BUTTON_LED_COUNT, ESP_ERR_INVALID_ARG,
                         TAG, "LED index %u out of range", index);
 
     if (xSemaphoreTake(handle->lock, portMAX_DELAY) != pdTRUE) {
@@ -291,7 +313,7 @@ esp_err_t mosaico_button_led_set_all(mosaico_button_led_handle_t handle,
         return ESP_ERR_INVALID_STATE;
     }
 
-    for (uint8_t i = 0; i < handle->hardware.led_count; ++i) {
+    for (uint8_t i = 0; i < MOSAICO_BUTTON_LED_COUNT; ++i) {
         handle->colors[i] = color;
     }
     esp_err_t ret = push_leds(handle);

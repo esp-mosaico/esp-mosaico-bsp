@@ -23,7 +23,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "linux/videodev2.h"
-#include "mosaico_camera.h"
+#include "mosaico_module_camera.h"
 #include "nvs_flash.h"
 
 #define WIFI_AP_SSID               "mosaico-cam"
@@ -84,10 +84,25 @@ static esp_err_t camera_wait_and_open(void)
     config.buffer_count = 2;
     config.allow_unidentified = true;
     while (true) {
-        if (mosaico_camera_new(&config, &s_app.camera) == ESP_OK) {
+        esp_err_t ret = mosaico_camera_new(&config, &s_app.camera);
+        if (ret == ESP_OK) {
+            ret = mosaico_camera_open(s_app.camera);
+        }
+        if (ret == ESP_OK) {
+            ret = mosaico_camera_start_stream(s_app.camera);
+        }
+        if (ret == ESP_OK) {
             return ESP_OK;
         }
-        ESP_LOGW(TAG, "Camera not found, retrying...");
+        if (s_app.camera) {
+            const esp_err_t cleanup_ret = mosaico_camera_del(s_app.camera);
+            if (cleanup_ret == ESP_OK) {
+                s_app.camera = NULL;
+            } else {
+                return cleanup_ret;
+            }
+        }
+        ESP_LOGW(TAG, "Open camera failed, retrying: %s", esp_err_to_name(ret));
         vTaskDelay(pdMS_TO_TICKS(CAMERA_RETRY_DELAY_MS));
     }
 }

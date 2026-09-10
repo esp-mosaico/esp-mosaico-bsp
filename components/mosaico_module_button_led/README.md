@@ -1,10 +1,12 @@
 # Mosaico Button LED subboard
 
-`mosaico_button_led` discovers and claims a Button LED subboard, reads its two
+`mosaico_module_button_led` discovers and claims a Button LED subboard, reads its two
 keys, and controls its three WS2812 LEDs. Pass `NULL` to use automatic slot
 discovery and the default brightness.
 
 ```c
+#include "mosaico_module_button_led.h"
+
 mosaico_button_led_handle_t board = NULL;
 ESP_ERROR_CHECK(mosaico_button_led_new(NULL, &board));
 

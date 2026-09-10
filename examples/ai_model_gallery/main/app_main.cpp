@@ -24,7 +24,7 @@
 #include "freertos/task.h"
 #include "human_face_detect.hpp"
 #include "iot_button.h"
-#include "mosaico_camera.h"
+#include "mosaico_module_camera.h"
 
 static const char *TAG = "ai_gallery";
 
@@ -77,6 +77,8 @@ static void close_capture(mosaico_camera_handle_t *camera,
                           mosaico_camera_jpeg_decoder_handle_t *decoder)
 {
     if (camera && *camera) {
+        ESP_ERROR_CHECK(mosaico_camera_stop_stream(*camera));
+        ESP_ERROR_CHECK(mosaico_camera_close(*camera));
         ESP_ERROR_CHECK(mosaico_camera_del(*camera));
         *camera = NULL;
     }
@@ -92,8 +94,22 @@ static void open_capture(const mosaico_camera_config_t *config,
 {
     ESP_ERROR_CHECK(mosaico_camera_jpeg_decoder_new(
         config->width, config->height, decoder));
-    while (mosaico_camera_new(config, camera) != ESP_OK) {
-        ESP_LOGW(TAG, "Camera not found, retrying...");
+    while (true) {
+        esp_err_t ret = mosaico_camera_new(config, camera);
+        if (ret == ESP_OK) {
+            ret = mosaico_camera_open(*camera);
+        }
+        if (ret == ESP_OK) {
+            ret = mosaico_camera_start_stream(*camera);
+        }
+        if (ret == ESP_OK) {
+            return;
+        }
+        if (*camera) {
+            ESP_ERROR_CHECK(mosaico_camera_del(*camera));
+            *camera = NULL;
+        }
+        ESP_LOGW(TAG, "Open camera failed, retrying: %s", esp_err_to_name(ret));
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }

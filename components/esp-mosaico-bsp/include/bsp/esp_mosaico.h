@@ -11,12 +11,15 @@
 
 #pragma once
 
+#include "sdkconfig.h"
 #include "driver/gpio.h"
 #include "driver/spi_common.h"
 #include "bsp/audio.h"
 #include "bsp/battery.h"
 #include "bsp/button.h"
+#if CONFIG_BSP_DISPLAY_ENABLE
 #include "bsp/display.h"
+#endif
 #include "bsp/imu.h"
 #include "bsp/led.h"
 #include "bsp/magnetometer.h"
@@ -30,6 +33,14 @@ extern "C" {
 #endif
 
 #define BSP_BOARD_ESP_MOSAICO
+
+typedef enum {
+    BSP_BOARD_VARIANT_V1_0 = 0,
+    BSP_BOARD_VARIANT_V1_2,
+} bsp_board_variant_t;
+
+/** Detect and return the board revision from eFuse USER_DATA. */
+esp_err_t bsp_board_variant_get(bsp_board_variant_t *variant);
 
 #define BSP_CAPS_DISPLAY          1
 #define BSP_CAPS_TOUCH            1
@@ -48,20 +59,34 @@ extern "C" {
 #define BSP_CAPS_CAMERA           0
 #define BSP_CAPS_SUBBOARDS        1
 
-/* Shared I2C0 bus */
+/* Mainboard I2C bus. Legacy aliases below retain the v1.0 pin values. */
 #define BSP_I2C_PORT              I2C_NUM_0
-#define BSP_I2C_SDA               GPIO_NUM_0
-#define BSP_I2C_SCL               GPIO_NUM_1
+#define BSP_I2C_SDA_V1_0          GPIO_NUM_0
+#define BSP_I2C_SCL_V1_0          GPIO_NUM_1
+#define BSP_I2C_SDA_V1_2          GPIO_NUM_56
+#define BSP_I2C_SCL_V1_2          GPIO_NUM_3
+#define BSP_I2C_SDA               BSP_I2C_SDA_V1_0
+#define BSP_I2C_SCL               BSP_I2C_SCL_V1_0
+
+/* v1.0 shares I2C0 with the mainboard; v1.2 uses a dedicated I2C1 bus. */
+#define BSP_SUBBOARD_I2C_PORT_V1_0 I2C_NUM_0
+#define BSP_SUBBOARD_I2C_PORT_V1_2 I2C_NUM_1
+#define BSP_SUBBOARD_I2C_SDA       GPIO_NUM_0
+#define BSP_SUBBOARD_I2C_SCL       GPIO_NUM_1
 
 /* Shared sensor interrupt, diode-ORed on the board */
 #define BSP_SENSOR_INT            GPIO_NUM_2
 
 /* CO5300 QSPI LCD */
 #define BSP_LCD_SPI_HOST          SPI2_HOST
-#define BSP_LCD_RST               GPIO_NUM_42
+#define BSP_LCD_RST_V1_0          GPIO_NUM_42
+#define BSP_LCD_RST_V1_2          GPIO_NUM_44
 #define BSP_LCD_TE                GPIO_NUM_43
 #define BSP_LCD_CS                GPIO_NUM_50
-#define BSP_LCD_SCL               GPIO_NUM_44
+#define BSP_LCD_SCL_V1_0          GPIO_NUM_44
+#define BSP_LCD_SCL_V1_2          GPIO_NUM_42
+#define BSP_LCD_RST               BSP_LCD_RST_V1_0
+#define BSP_LCD_SCL               BSP_LCD_SCL_V1_0
 #define BSP_LCD_DATA0             GPIO_NUM_36
 #define BSP_LCD_DATA1             GPIO_NUM_51
 #define BSP_LCD_DATA2             GPIO_NUM_35
@@ -70,8 +95,12 @@ extern "C" {
 #define BSP_LCD_BACKLIGHT         GPIO_NUM_NC
 
 /* CO5300 touch */
-#define BSP_LCD_TOUCH_I2C_SDA     BSP_I2C_SDA
-#define BSP_LCD_TOUCH_I2C_SCL     BSP_I2C_SCL
+#define BSP_LCD_TOUCH_I2C_SDA_V1_0 BSP_I2C_SDA_V1_0
+#define BSP_LCD_TOUCH_I2C_SCL_V1_0 BSP_I2C_SCL_V1_0
+#define BSP_LCD_TOUCH_I2C_SDA_V1_2 BSP_I2C_SDA_V1_2
+#define BSP_LCD_TOUCH_I2C_SCL_V1_2 BSP_I2C_SCL_V1_2
+#define BSP_LCD_TOUCH_I2C_SDA      BSP_LCD_TOUCH_I2C_SDA_V1_0
+#define BSP_LCD_TOUCH_I2C_SCL      BSP_LCD_TOUCH_I2C_SCL_V1_0
 #define BSP_LCD_TOUCH_INT         GPIO_NUM_6
 #define BSP_LCD_TOUCH_RST         GPIO_NUM_NC
 #define BSP_LCD_TOUCH_I2C_TIMEOUT_MS 100
@@ -86,11 +115,12 @@ extern "C" {
 /* esp_codec_dev expects the 8-bit form of the schematic's 7-bit address 0x19. */
 #define BSP_AUDIO_CODEC_I2C_ADDR  (0x19U << 1)
 
-/* Board power rails: VCC_PW is active-low; CODEC_PW is active-high */
+/* Board power rails: VCC_PW is active-low; v1.0 CODEC_PW is active-high. */
 #define BSP_POWER_VCC_3V3_CTRL         GPIO_NUM_60
 #define BSP_POWER_VCC_3V3_ON_LEVEL     0
 #define BSP_POWER_VCC_3V3_OFF_LEVEL    1
-#define BSP_POWER_CODEC_3V3_CTRL       GPIO_NUM_56
+#define BSP_POWER_CODEC_3V3_CTRL_V1_0  GPIO_NUM_56
+#define BSP_POWER_CODEC_3V3_CTRL       BSP_POWER_CODEC_3V3_CTRL_V1_0
 #define BSP_POWER_CODEC_3V3_ON_LEVEL   1
 #define BSP_POWER_CODEC_3V3_OFF_LEVEL  0
 #define BSP_POWER_SWITCH_GPIO          GPIO_NUM_57
@@ -101,7 +131,8 @@ extern "C" {
 #define BSP_BUTTON_AI_GPIO        GPIO_NUM_7
 #define BSP_BUTTON_BOOT_GPIO      GPIO_NUM_61
 #define BSP_BUTTON_ACTIVE_LEVEL   0
-#define BSP_LED_STATUS_GPIO       GPIO_NUM_3
+#define BSP_LED_STATUS_GPIO_V1_0  GPIO_NUM_3
+#define BSP_LED_STATUS_GPIO       BSP_LED_STATUS_GPIO_V1_0
 #define BSP_LED_ON_LEVEL          0
 #define BSP_LED_OFF_LEVEL         1
 #define BSP_MOTOR_GPIO            GPIO_NUM_8

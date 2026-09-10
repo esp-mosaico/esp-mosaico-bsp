@@ -8,7 +8,6 @@
 #include <inttypes.h>
 #include <string.h>
 
-#include "bsp/power.h"
 #include "bsp/subboard.h"
 #include "driver/i2c_master.h"
 #include "esp_check.h"
@@ -29,6 +28,7 @@ static const char *TAG = "mosaico_module_mgr";
 #define EEPROM_DETACH_RETRY_MS         20
 #define MANAGER_TASK_STACK_SIZE        4096U
 #define MANAGER_TASK_PRIORITY          5U
+#define MODULE_SUBSCRIBER_COUNT        4U
 
 _Static_assert(sizeof(mosaico_module_mgr_eeprom_v1_t) ==
                    MOSAICO_MODULE_MGR_EEPROM_IMAGE_SIZE,
@@ -42,7 +42,14 @@ typedef struct {
     uint8_t candidate_count;
     uint8_t invalid_attempts;
     bool claimed;
+    bool unidentified_claim;
+    bool needs_restore;
 } slot_state_t;
+
+typedef struct {
+    mosaico_module_mgr_event_callback_t callback;
+    void *user_data;
+} module_subscriber_t;
 
 typedef struct {
     bool initialized;
@@ -55,6 +62,13 @@ typedef struct {
 } manager_context_t;
 
 static manager_context_t s_manager;
+static portMUX_TYPE s_subscriber_lock = portMUX_INITIALIZER_UNLOCKED;
+static module_subscriber_t s_subscribers[MODULE_SUBSCRIBER_COUNT];
+
+static bool slot_is_valid(mosaico_module_mgr_slot_t slot)
+{
+    return slot >= MOSAICO_MODULE_MGR_SLOT_LEFT && slot < MOSAICO_MODULE_MGR_SLOT_COUNT;
+}
 
 uint16_t mosaico_module_mgr_crc16(const uint8_t *data, size_t len)
 {
@@ -109,10 +123,10 @@ const char *mosaico_module_mgr_slot_to_name(mosaico_module_mgr_slot_t slot)
 esp_err_t mosaico_module_mgr_slot_from_eeprom_addr(uint8_t eeprom_addr,
                                                    mosaico_module_mgr_slot_t *out_slot)
 {
+    ESP_RETURN_ON_FALSE(out_slot, ESP_ERR_INVALID_ARG, TAG, "slot output is null");
     bsp_subboard_slot_t slot = BSP_SUBBOARD_SLOT_LEFT;
     ESP_RETURN_ON_ERROR(bsp_subboard_slot_from_eeprom_addr(eeprom_addr, &slot),
                         TAG, "map EEPROM 0x%02X to slot failed", eeprom_addr);
-    ESP_RETURN_ON_FALSE(out_slot, ESP_ERR_INVALID_ARG, TAG, "slot output is null");
     *out_slot = (mosaico_module_mgr_slot_t)slot;
     return ESP_OK;
 }
@@ -134,6 +148,8 @@ const char *mosaico_module_mgr_type_to_name(mosaico_board_type_t type)
         return "Relay";
     case MOSAICO_BOARD_TYPE_BUTTON_LED:
         return "Button LED";
+    case MOSAICO_BOARD_TYPE_INTERACT:
+        return "Interaction";
     case MOSAICO_BOARD_TYPE_CORE:
         return "Core";
     case MOSAICO_BOARD_TYPE_POWER:
@@ -153,12 +169,60 @@ const char *mosaico_module_mgr_type_to_name(mosaico_board_type_t type)
     }
 }
 
+esp_err_t mosaico_module_mgr_subscribe(mosaico_module_mgr_event_callback_t callback,
+                                       void *user_data)
+{
+    ESP_RETURN_ON_FALSE(callback, ESP_ERR_INVALID_ARG, TAG, "subscriber is null");
+
+    portENTER_CRITICAL(&s_subscriber_lock);
+    for (size_t i = 0; i < MODULE_SUBSCRIBER_COUNT; ++i) {
+        if (s_subscribers[i].callback == callback && s_subscribers[i].user_data == user_data) {
+            portEXIT_CRITICAL(&s_subscriber_lock);
+            return ESP_OK;
+        }
+        if (!s_subscribers[i].callback) {
+            s_subscribers[i] = (module_subscriber_t) {
+                .callback = callback,
+                .user_data = user_data,
+            };
+            portEXIT_CRITICAL(&s_subscriber_lock);
+            return ESP_OK;
+        }
+    }
+    portEXIT_CRITICAL(&s_subscriber_lock);
+    ESP_LOGE(TAG, "Subscriber table is full");
+    return ESP_ERR_NO_MEM;
+}
+
+esp_err_t mosaico_module_mgr_unsubscribe(mosaico_module_mgr_event_callback_t callback)
+{
+    ESP_RETURN_ON_FALSE(callback, ESP_ERR_INVALID_ARG, TAG, "subscriber is null");
+
+    portENTER_CRITICAL(&s_subscriber_lock);
+    size_t kept = 0;
+    for (size_t i = 0; i < MODULE_SUBSCRIBER_COUNT; ++i) {
+        if (s_subscribers[i].callback && s_subscribers[i].callback != callback) {
+            s_subscribers[kept++] = s_subscribers[i];
+        }
+    }
+    memset(&s_subscribers[kept], 0, (MODULE_SUBSCRIBER_COUNT - kept) * sizeof(s_subscribers[0]));
+    portEXIT_CRITICAL(&s_subscriber_lock);
+    return ESP_OK;
+}
+
 static void emit_event(mosaico_module_mgr_event_t event,
                        const mosaico_module_mgr_info_t *info)
 {
-    if (s_manager.config.event_callback) {
-        s_manager.config.event_callback(event, info,
-                                        s_manager.config.event_user_data);
+    module_subscriber_t subscribers[MODULE_SUBSCRIBER_COUNT];
+    portENTER_CRITICAL(&s_subscriber_lock);
+    memcpy(subscribers, s_subscribers, sizeof(subscribers));
+    portEXIT_CRITICAL(&s_subscriber_lock);
+
+    /* Callbacks may claim modules or change subscriptions. */
+    for (size_t i = 0; i < MODULE_SUBSCRIBER_COUNT; ++i) {
+        if (subscribers[i].callback) {
+            subscribers[i].callback(event, info, subscribers[i].user_data);
+        }
     }
 }
 
@@ -166,6 +230,8 @@ static void emit_event(mosaico_module_mgr_event_t event,
  * shared bus, so the devices stay attached for the lifetime of the manager. */
 static esp_err_t attach_eeprom_devices(void)
 {
+    i2c_master_bus_handle_t bus = bsp_subboard_get_i2c_bus();
+    ESP_RETURN_ON_FALSE(bus, ESP_ERR_INVALID_STATE, TAG, "subboard I2C bus is not initialized");
     for (size_t i = 0; i < MOSAICO_MODULE_MGR_SLOT_COUNT; ++i) {
         bsp_subboard_slot_config_t slot_config = {0};
         ESP_RETURN_ON_ERROR(bsp_subboard_get_slot_config((bsp_subboard_slot_t)i,
@@ -176,15 +242,15 @@ static esp_err_t attach_eeprom_devices(void)
             .device_address = slot_config.eeprom_addr,
             .scl_speed_hz = EEPROM_I2C_FREQ_HZ,
         };
-        ESP_RETURN_ON_ERROR(i2c_master_bus_add_device(bsp_i2c_get_handle(), &config,
-                                                      &s_manager.slots[i].eeprom),
+        ESP_RETURN_ON_ERROR(i2c_master_bus_add_device(bus, &config, &s_manager.slots[i].eeprom),
                             TAG, "attach EEPROM 0x%02X failed", slot_config.eeprom_addr);
     }
     return ESP_OK;
 }
 
-static void detach_eeprom_devices(void)
+static esp_err_t detach_eeprom_devices(void)
 {
+    esp_err_t result = ESP_OK;
     for (size_t i = 0; i < MOSAICO_MODULE_MGR_SLOT_COUNT; ++i) {
         i2c_master_dev_handle_t device = s_manager.slots[i].eeprom;
         if (!device) {
@@ -198,12 +264,15 @@ static void detach_eeprom_devices(void)
             }
         }
         if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Detach %s EEPROM failed, the bus stayed busy: %s",
+            ESP_LOGE(TAG, "Detach %s EEPROM failed; handle retained: %s",
                      mosaico_module_mgr_slot_to_name((mosaico_module_mgr_slot_t)i),
                      esp_err_to_name(ret));
+            result = ret;
+            continue;
         }
         s_manager.slots[i].eeprom = NULL;
     }
+    return result;
 }
 
 static esp_err_t read_eeprom(const bsp_subboard_slot_config_t *slot,
@@ -246,11 +315,7 @@ static void publish_presence(mosaico_module_mgr_slot_t slot, bool present,
         event = MOSAICO_MODULE_MGR_EVENT_REMOVED;
     } else {
         mosaico_module_mgr_eeprom_v1_t image = {0};
-        xSemaphoreGive(s_manager.lock);
         esp_err_t ret = read_eeprom(slot_config, &image);
-        xSemaphoreTake(s_manager.lock, portMAX_DELAY);
-
-        state = &s_manager.slots[slot];
         state->info.eeprom = image;
         state->info.eeprom_addr = slot_config->eeprom_addr;
         if (ret == ESP_OK && mosaico_module_mgr_eeprom_valid(&image)) {
@@ -265,6 +330,7 @@ static void publish_presence(mosaico_module_mgr_slot_t slot, bool present,
     }
 
     state->stable_present = present;
+    state->needs_restore = false;
     event_info = state->info;
     xSemaphoreGive(s_manager.lock);
 
@@ -288,64 +354,31 @@ static void publish_presence(mosaico_module_mgr_slot_t slot, bool present,
     emit_event(event, &event_info);
 }
 
-static void publish_claimed_removal(mosaico_module_mgr_slot_t slot,
-                                    const bsp_subboard_slot_config_t *slot_config)
+static bool restore_slot_after_release(mosaico_module_mgr_slot_t slot,
+                                       const bsp_subboard_slot_config_t *slot_config,
+                                       mosaico_module_mgr_info_t *out_removed)
 {
-    mosaico_module_mgr_info_t event_info = {0};
-
     xSemaphoreTake(s_manager.lock, portMAX_DELAY);
-    slot_state_t *state = &s_manager.slots[slot];
-    state->claimed = false;
-    state->stable_present = false;
-    state->candidate_present = false;
-    state->candidate_count = 0;
-    state->invalid_attempts = 0;
-    state->info.state = MOSAICO_MODULE_MGR_STATE_EMPTY;
-    state->info.generation++;
-    state->info.slot = slot;
-    state->info.eeprom_addr = slot_config->eeprom_addr;
-    memset(&state->info.eeprom, 0, sizeof(state->info.eeprom));
-    event_info = state->info;
-    xSemaphoreGive(s_manager.lock);
-
-    ESP_LOGI(TAG, "Module removed while claimed: slot=%s eeprom=0x%02X",
-             mosaico_module_mgr_slot_to_name(slot), slot_config->eeprom_addr);
-    emit_event(MOSAICO_MODULE_MGR_EVENT_REMOVED, &event_info);
-}
-
-static void restore_slot_after_release(mosaico_module_mgr_slot_t slot,
-                                       const bsp_subboard_slot_config_t *slot_config)
-{
-    const bool present =
-        i2c_master_probe(bsp_i2c_get_handle(), slot_config->eeprom_addr,
-                         EEPROM_I2C_TIMEOUT_MS) == ESP_OK;
-
-    xSemaphoreTake(s_manager.lock, portMAX_DELAY);
+    const bool present = i2c_master_probe(bsp_subboard_get_i2c_bus(), slot_config->eeprom_addr,
+                                          EEPROM_I2C_TIMEOUT_MS) == ESP_OK;
     slot_state_t *state = &s_manager.slots[slot];
     const bool was_present = state->stable_present;
     state->candidate_present = false;
     state->candidate_count = 0;
     state->invalid_attempts = 0;
+    state->needs_restore = false;
 
     if (!present) {
         state->stable_present = false;
         state->info.state = MOSAICO_MODULE_MGR_STATE_EMPTY;
         state->info.generation++;
-        mosaico_module_mgr_info_t event_info = state->info;
+        *out_removed = state->info;
         xSemaphoreGive(s_manager.lock);
-        if (was_present) {
-            ESP_LOGI(TAG, "Module removed: slot=%s eeprom=0x%02X",
-                     mosaico_module_mgr_slot_to_name(slot), slot_config->eeprom_addr);
-            emit_event(MOSAICO_MODULE_MGR_EVENT_REMOVED, &event_info);
-        }
-        return;
+        return was_present;
     }
 
     mosaico_module_mgr_eeprom_v1_t image = {0};
-    xSemaphoreGive(s_manager.lock);
     esp_err_t ret = read_eeprom(slot_config, &image);
-    xSemaphoreTake(s_manager.lock, portMAX_DELAY);
-    state = &s_manager.slots[slot];
     state->stable_present = true;
     state->info.eeprom_addr = slot_config->eeprom_addr;
     if (ret == ESP_OK && mosaico_module_mgr_eeprom_valid(&image)) {
@@ -357,51 +390,35 @@ static void restore_slot_after_release(mosaico_module_mgr_slot_t slot,
         memset(&state->info.eeprom, 0, sizeof(state->info.eeprom));
     }
     xSemaphoreGive(s_manager.lock);
+    return false;
+}
+
+static bool discovery_blocked_locked(mosaico_module_mgr_slot_t slot)
+{
+    const slot_state_t *left = &s_manager.slots[MOSAICO_MODULE_MGR_SLOT_LEFT];
+    const bool left_reuses_address_pin = left->claimed &&
+                                         (left->unidentified_claim || left->info.eeprom.board_type == MOSAICO_BOARD_TYPE_CAMERA);
+    return s_manager.slots[slot].claimed || left_reuses_address_pin;
 }
 
 static void scan_slot(mosaico_module_mgr_slot_t slot)
 {
     bsp_subboard_slot_config_t slot_config = {0};
-    slot_state_t *state = NULL;
-
-    if (bsp_subboard_get_slot_config((bsp_subboard_slot_t)slot,
-                                     &slot_config) != ESP_OK) {
+    if (bsp_subboard_get_slot_config((bsp_subboard_slot_t)slot, &slot_config) != ESP_OK) {
         return;
     }
 
-    const bool present =
-        i2c_master_probe(bsp_i2c_get_handle(), slot_config.eeprom_addr,
-                         EEPROM_I2C_TIMEOUT_MS) == ESP_OK;
-
     xSemaphoreTake(s_manager.lock, portMAX_DELAY);
-    state = &s_manager.slots[slot];
-    const bool claimed = state->claimed;
-    const bool stable_present = state->stable_present;
-    xSemaphoreGive(s_manager.lock);
-
-    if (claimed) {
-        bool remove = false;
-        xSemaphoreTake(s_manager.lock, portMAX_DELAY);
-        state = &s_manager.slots[slot];
-        if (!present) {
-            if (state->candidate_count < s_manager.config.debounce_count) {
-                state->candidate_count++;
-            }
-            remove = state->candidate_count >= s_manager.config.debounce_count &&
-                     stable_present;
-        } else {
-            state->candidate_count = 0;
-        }
+    if (discovery_blocked_locked(slot)) {
         xSemaphoreGive(s_manager.lock);
-        if (remove) {
-            publish_claimed_removal(slot, &slot_config);
-        }
         return;
     }
 
+    /* Keep claim and probe mutually exclusive while connector pins are reusable. */
+    const bool present = i2c_master_probe(bsp_subboard_get_i2c_bus(), slot_config.eeprom_addr,
+                                          EEPROM_I2C_TIMEOUT_MS) == ESP_OK;
     bool publish = false;
-    xSemaphoreTake(s_manager.lock, portMAX_DELAY);
-    state = &s_manager.slots[slot];
+    slot_state_t *state = &s_manager.slots[slot];
     if (present != state->candidate_present) {
         state->candidate_present = present;
         state->candidate_count = 1;
@@ -410,8 +427,9 @@ static void scan_slot(mosaico_module_mgr_slot_t slot)
     }
 
     if (state->candidate_count >= s_manager.config.debounce_count) {
-        /* On a bus shared with the touch panel a failed read is often transient. */
+        /* Shared-bus probe failures are often transient. */
         publish = present != state->stable_present ||
+                  state->needs_restore ||
                   (present && state->info.state == MOSAICO_MODULE_MGR_STATE_INVALID &&
                    state->invalid_attempts < EEPROM_READ_ATTEMPTS);
     }
@@ -444,6 +462,17 @@ esp_err_t mosaico_module_mgr_init(const mosaico_module_mgr_config_t *config)
 {
     if (s_manager.initialized) {
         return ESP_OK;
+    }
+
+    if (s_manager.lock || s_manager.stopped) {
+        ESP_RETURN_ON_ERROR(detach_eeprom_devices(), TAG, "clean up previous initialization failed");
+        if (s_manager.lock) {
+            vSemaphoreDelete(s_manager.lock);
+        }
+        if (s_manager.stopped) {
+            vSemaphoreDelete(s_manager.stopped);
+        }
+        memset(&s_manager, 0, sizeof(s_manager));
     }
 
     mosaico_module_mgr_config_t active =
@@ -488,7 +517,10 @@ esp_err_t mosaico_module_mgr_init(const mosaico_module_mgr_config_t *config)
 
     esp_err_t ret = attach_eeprom_devices();
     if (ret != ESP_OK) {
-        detach_eeprom_devices();
+        esp_err_t detach_ret = detach_eeprom_devices();
+        if (detach_ret != ESP_OK) {
+            return detach_ret;
+        }
         vSemaphoreDelete(s_manager.lock);
         vSemaphoreDelete(s_manager.stopped);
         memset(&s_manager, 0, sizeof(s_manager));
@@ -503,7 +535,10 @@ esp_err_t mosaico_module_mgr_init(const mosaico_module_mgr_config_t *config)
     if (created != pdPASS) {
         s_manager.running = false;
         s_manager.initialized = false;
-        detach_eeprom_devices();
+        esp_err_t detach_ret = detach_eeprom_devices();
+        if (detach_ret != ESP_OK) {
+            return detach_ret;
+        }
         vSemaphoreDelete(s_manager.lock);
         vSemaphoreDelete(s_manager.stopped);
         memset(&s_manager, 0, sizeof(s_manager));
@@ -542,7 +577,7 @@ esp_err_t mosaico_module_mgr_deinit(void)
         }
     }
 
-    detach_eeprom_devices();
+    ESP_RETURN_ON_ERROR(detach_eeprom_devices(), TAG, "detach EEPROM devices failed");
     vSemaphoreDelete(s_manager.lock);
     vSemaphoreDelete(s_manager.stopped);
     memset(&s_manager, 0, sizeof(s_manager));
@@ -555,7 +590,7 @@ esp_err_t mosaico_module_mgr_get_info(mosaico_module_mgr_slot_t slot,
 {
     ESP_RETURN_ON_FALSE(s_manager.initialized, ESP_ERR_INVALID_STATE, TAG,
                         "module manager is not initialized");
-    ESP_RETURN_ON_FALSE(out_info && slot < MOSAICO_MODULE_MGR_SLOT_COUNT,
+    ESP_RETURN_ON_FALSE(out_info && slot_is_valid(slot),
                         ESP_ERR_INVALID_ARG, TAG, "invalid slot info request");
     xSemaphoreTake(s_manager.lock, portMAX_DELAY);
     *out_info = s_manager.slots[slot].info;
@@ -571,7 +606,7 @@ esp_err_t mosaico_module_mgr_find(mosaico_board_type_t type,
                         "module manager is not initialized");
     ESP_RETURN_ON_FALSE(out_info &&
                             (preferred_slot == MOSAICO_MODULE_MGR_SLOT_AUTO ||
-                             preferred_slot < MOSAICO_MODULE_MGR_SLOT_COUNT),
+                             slot_is_valid(preferred_slot)),
                         ESP_ERR_INVALID_ARG, TAG, "invalid find request");
 
     xSemaphoreTake(s_manager.lock, portMAX_DELAY);
@@ -620,7 +655,7 @@ esp_err_t mosaico_module_mgr_claim(mosaico_module_mgr_slot_t slot,
 {
     ESP_RETURN_ON_FALSE(s_manager.initialized, ESP_ERR_INVALID_STATE, TAG,
                         "module manager is not initialized");
-    ESP_RETURN_ON_FALSE(slot < MOSAICO_MODULE_MGR_SLOT_COUNT,
+    ESP_RETURN_ON_FALSE(slot_is_valid(slot),
                         ESP_ERR_INVALID_ARG, TAG, "invalid claim slot");
 
     mosaico_module_mgr_info_t event_info = {0};
@@ -636,6 +671,7 @@ esp_err_t mosaico_module_mgr_claim(mosaico_module_mgr_slot_t slot,
         return ESP_ERR_INVALID_STATE;
     }
     state->claimed = true;
+    state->unidentified_claim = false;
     state->info.state = MOSAICO_MODULE_MGR_STATE_CLAIMED;
     state->info.generation++;
     event_info = state->info;
@@ -652,20 +688,22 @@ esp_err_t mosaico_module_mgr_claim_unidentified(mosaico_module_mgr_slot_t slot)
 {
     ESP_RETURN_ON_FALSE(s_manager.initialized, ESP_ERR_INVALID_STATE, TAG,
                         "module manager is not initialized");
-    ESP_RETURN_ON_FALSE(slot < MOSAICO_MODULE_MGR_SLOT_COUNT,
+    ESP_RETURN_ON_FALSE(slot_is_valid(slot),
                         ESP_ERR_INVALID_ARG, TAG, "invalid claim slot");
 
     mosaico_module_mgr_info_t event_info = {0};
     xSemaphoreTake(s_manager.lock, portMAX_DELAY);
     slot_state_t *state = &s_manager.slots[slot];
-    if (state->claimed) {
+    if (state->claimed || (state->info.state != MOSAICO_MODULE_MGR_STATE_EMPTY &&
+                           state->info.state != MOSAICO_MODULE_MGR_STATE_INVALID)) {
         xSemaphoreGive(s_manager.lock);
-        ESP_LOGE(TAG, "Claim slot %s failed, already claimed: %s",
+        ESP_LOGE(TAG, "Claim unidentified slot %s failed: %s",
                  mosaico_module_mgr_slot_to_name(slot),
                  esp_err_to_name(ESP_ERR_INVALID_STATE));
         return ESP_ERR_INVALID_STATE;
     }
     state->claimed = true;
+    state->unidentified_claim = true;
     state->info.state = MOSAICO_MODULE_MGR_STATE_CLAIMED;
     state->info.generation++;
     event_info = state->info;
@@ -681,7 +719,7 @@ esp_err_t mosaico_module_mgr_release(mosaico_module_mgr_slot_t slot)
 {
     ESP_RETURN_ON_FALSE(s_manager.initialized, ESP_ERR_INVALID_STATE, TAG,
                         "module manager is not initialized");
-    ESP_RETURN_ON_FALSE(slot < MOSAICO_MODULE_MGR_SLOT_COUNT,
+    ESP_RETURN_ON_FALSE(slot_is_valid(slot),
                         ESP_ERR_INVALID_ARG, TAG, "invalid release slot");
 
     mosaico_module_mgr_info_t event_info = {0};
@@ -692,21 +730,30 @@ esp_err_t mosaico_module_mgr_release(mosaico_module_mgr_slot_t slot)
         return ESP_OK;
     }
     state->claimed = false;
+    state->unidentified_claim = false;
     state->info.generation++;
-    event_info = state->info;
+    state->needs_restore = true;
+    const bool restore_deferred = discovery_blocked_locked(slot);
     xSemaphoreGive(s_manager.lock);
 
-    ESP_LOGI(TAG, "Module released: slot=%s; discovery resumed",
-             mosaico_module_mgr_slot_to_name(slot));
-    emit_event(MOSAICO_MODULE_MGR_EVENT_RELEASED, &event_info);
-
     bsp_subboard_slot_config_t slot_config = {0};
-    if (bsp_subboard_get_slot_config((bsp_subboard_slot_t)slot,
-                                     &slot_config) == ESP_OK) {
-        restore_slot_after_release(slot, &slot_config);
-    } else {
-        mosaico_module_mgr_request_rescan();
+    mosaico_module_mgr_info_t removed_info = {0};
+    bool removed = false;
+    if (!restore_deferred && bsp_subboard_get_slot_config((bsp_subboard_slot_t)slot, &slot_config) == ESP_OK) {
+        removed = restore_slot_after_release(slot, &slot_config, &removed_info);
     }
+
+    xSemaphoreTake(s_manager.lock, portMAX_DELAY);
+    event_info = s_manager.slots[slot].info;
+    xSemaphoreGive(s_manager.lock);
+    ESP_LOGI(TAG, "Module released: slot=%s; discovery resumed", mosaico_module_mgr_slot_to_name(slot));
+    emit_event(MOSAICO_MODULE_MGR_EVENT_RELEASED, &event_info);
+    if (removed) {
+        ESP_LOGI(TAG, "Module removed: slot=%s eeprom=0x%02X",
+                 mosaico_module_mgr_slot_to_name(slot), removed_info.eeprom_addr);
+        emit_event(MOSAICO_MODULE_MGR_EVENT_REMOVED, &removed_info);
+    }
+    mosaico_module_mgr_request_rescan();
     return ESP_OK;
 }
 

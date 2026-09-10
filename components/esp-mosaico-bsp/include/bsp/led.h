@@ -12,6 +12,7 @@
 extern "C" {
 #endif
 
+/** Initialize the v1.0 status LED. Returns ESP_ERR_NOT_SUPPORTED on v1.2. */
 esp_err_t bsp_led_init(void);
 esp_err_t bsp_led_set(bool on);
 

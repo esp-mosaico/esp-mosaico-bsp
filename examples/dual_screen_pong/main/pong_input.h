@@ -8,7 +8,7 @@
 #include <stdbool.h>
 
 #include "esp_err.h"
-#include "mosaico_joystick.h"
+#include "mosaico_module_joystick.h"
 #include "pong_types.h"
 
 #ifdef __cplusplus

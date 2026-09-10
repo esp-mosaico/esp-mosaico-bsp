@@ -1,7 +1,12 @@
 menu "ESP-Mosaico BSP"
 
+    config BSP_DISPLAY_ENABLE
+        bool "Enable BSP display support"
+        default y
+
     config BSP_CO5300_ENABLE_TE
         bool "Enable CO5300 TE anti-tearing synchronization"
+        depends on BSP_DISPLAY_ENABLE
         default y
         help
             Enable the CO5300 tearing-effect output and connect GPIO43 to the
@@ -20,10 +25,6 @@ menu "ESP-Mosaico BSP"
             Lower values reduce edge rate and RF emissions (useful for Wi-Fi/BLE
             coexistence). 0 = weakest (GPIO_DRIVE_CAP_0), 3 = strongest.
             Default is 0. Increase if display signal integrity fails at high clock.
-
-    config BSP_NAND_USE_QIO
-        bool "Use QIO mode for SPI NAND"
-        default n
 
     config BSP_MOTOR_ENABLE_PWM
         bool "Enable LEDC PWM motor control"

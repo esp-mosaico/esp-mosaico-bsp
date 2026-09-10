@@ -13,7 +13,8 @@ The repository also includes reusable components for magnetic interaction, ESP-N
 | Item | Support |
 | --- | --- |
 | SoC | ESP32-S31 |
-| ESP-IDF | 6.1 or newer |
+| ESP-IDF | 6.2 or newer |
+| Board revisions | v1.0 and v1.2 (v1.1 uses the v1.2 mapping) |
 
 ESP32-S31 support may require the preview target command provided by the selected ESP-IDF release:
 
@@ -33,7 +34,7 @@ idf.py --preview set-target esp32s31
 | Yes | Battery monitoring | BQ27220 fuel gauge |
 | Yes | Storage | SPI NAND flash |
 | Yes | User input | AI and BOOT buttons |
-| Yes | Feedback | Status LED and vibration motor |
+| Yes | Feedback | Vibration motor; status LED on v1.0 |
 | Yes | USB | USB OTG |
 | Yes | Expansion | Left and right hot-pluggable module slots |
 
@@ -43,7 +44,7 @@ The main public header is [`components/esp-mosaico-bsp/include/bsp/esp_mosaico.h
 
 ### Prerequisites
 
-- ESP-IDF 6.1 or newer with ESP32-S31 target support
+- ESP-IDF 6.2 or newer with ESP32-S31 target support
 - An ESP-Mosaico board
 - A data-capable USB or UART cable suitable for the selected example
 
@@ -58,13 +59,17 @@ Include the board header to access all public BSP interfaces:
 
 void app_main(void)
 {
+    bsp_board_variant_t variant;
+    ESP_ERROR_CHECK(bsp_board_variant_get(&variant));
     ESP_ERROR_CHECK(bsp_power_init());
-    ESP_ERROR_CHECK(bsp_led_init());
-    ESP_ERROR_CHECK(bsp_led_set(true));
+    if (variant == BSP_BOARD_VARIANT_V1_0) {
+        ESP_ERROR_CHECK(bsp_led_init());
+        ESP_ERROR_CHECK(bsp_led_set(true));
+    }
 }
 ```
 
-Applications should check the return value of every BSP function. Use the high-level peripheral and expansion-module APIs where available instead of configuring shared board resources directly.
+The BSP reads the hardware version from eFuse USER_DATA before configuring revision-dependent pins. Unsupported or unprogrammed versions return `ESP_ERR_NOT_SUPPORTED`. Applications should check the return value of every BSP function and use the high-level peripheral and expansion-module APIs instead of configuring shared board resources directly.
 
 ### Configuration
 
@@ -101,9 +106,10 @@ Run `idf.py menuconfig` and open `ESP-Mosaico BSP` to configure the board-specif
 
 | Component | Description | Slot support |
 | --- | --- | --- |
-| [`mosaico_module_camera`](components/mosaico_module_camera) | Managed OV3640 DVP camera with optional hardware JPEG decoding helpers | Left only |
+| [`mosaico_module_camera`](components/mosaico_module_camera) | Managed OV3640/SC101IOT DVP camera with optional hardware JPEG decoding helpers | Left only |
 | [`mosaico_module_button_led`](components/mosaico_module_button_led) | Two-button and three-WS2812 expansion module | Left or right |
 | [`mosaico_module_joystick`](components/mosaico_module_joystick) | Dual-axis joystick with five buttons and non-blocking calibration | Left or right |
+| [`mosaico_module_interact`](components/mosaico_module_interact) | Touch/button, motion, light, WS2812, and infrared interaction module | Left or right |
 
 The two slots share board resources. Applications should use a concrete module driver, which discovers and claims the required slot through `mosaico_module_mgr`, rather than controlling connector pins directly.
 

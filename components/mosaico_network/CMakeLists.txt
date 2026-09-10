@@ -4,6 +4,4 @@ idf_component_register(
     REQUIRES
         esp_timer
         freertos
-        mosaico_interaction
-        mosaico_peer_link
 )

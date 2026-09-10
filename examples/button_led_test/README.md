@@ -25,4 +25,4 @@ python ../../tools/collect_serial.py --duration 15 \
 ```
 
 This example uses the on-board button and LED through the BSP. For the
-hot-pluggable Button LED subboard, use the `mosaico_button_led` component.
+hot-pluggable Button LED subboard, use the `mosaico_module_button_led` component.

@@ -6,6 +6,7 @@ targets:
   - esp32s31
 
 dependencies:
-  idf: ">=5.5"
   esp-mosaico-bsp:
-    path: ../esp-mosaico-bsp
+    version: "^0.2"
+    public: true
+    override_path: ../esp-mosaico-bsp

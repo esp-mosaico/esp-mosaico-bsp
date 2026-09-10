@@ -9,6 +9,5 @@ idf_component_register(
         esp_netif
         esp_wifi
         freertos
-        mosaico_interaction
         nvs_flash
 )

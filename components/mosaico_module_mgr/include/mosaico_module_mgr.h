@@ -21,10 +21,8 @@ extern "C" {
 #define MOSAICO_MODULE_MGR_SLOT_AUTO             MOSAICO_MODULE_MGR_SLOT_COUNT
 
 #define MOSAICO_MODULE_MGR_DEFAULT_CONFIG() { \
-    .scan_period_ms = 200,                  \
+    .scan_period_ms = 1000,                 \
     .debounce_count = 3,                    \
-    .event_callback = NULL,                 \
-    .event_user_data = NULL,                \
 }
 
 typedef enum {
@@ -48,6 +46,7 @@ typedef enum {
     MOSAICO_BOARD_TYPE_THERMAL     = 0x12,
     MOSAICO_BOARD_TYPE_RELAY       = 0x13,
     MOSAICO_BOARD_TYPE_BUTTON_LED  = 0x14,
+    MOSAICO_BOARD_TYPE_INTERACT    = 0x15,
 } mosaico_board_type_t;
 
 typedef enum {
@@ -102,8 +101,6 @@ typedef void (*mosaico_module_mgr_event_callback_t)(mosaico_module_mgr_event_t e
 typedef struct {
     uint32_t scan_period_ms;
     uint8_t debounce_count;
-    mosaico_module_mgr_event_callback_t event_callback;
-    void *event_user_data;
 } mosaico_module_mgr_config_t;
 
 /**
@@ -112,6 +109,22 @@ typedef struct {
  * Passing NULL selects automatic defaults. Repeated calls are idempotent.
  */
 esp_err_t mosaico_module_mgr_init(const mosaico_module_mgr_config_t *config);
+
+/**
+ * @brief Subscribe to module events
+ *
+ * Duplicate callback/user_data pairs are ignored. Up to four pairs are kept.
+ * Subscriptions may be registered before init and survive deinit.
+ */
+esp_err_t mosaico_module_mgr_subscribe(mosaico_module_mgr_event_callback_t callback,
+                                       void *user_data);
+
+/**
+ * @brief Remove every subscription matching a callback
+ *
+ * Callbacks already copied for dispatch may still run after this call returns.
+ */
+esp_err_t mosaico_module_mgr_unsubscribe(mosaico_module_mgr_event_callback_t callback);
 
 /**
  * @brief Stop the manager
