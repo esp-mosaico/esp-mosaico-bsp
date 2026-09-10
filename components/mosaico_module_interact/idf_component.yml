@@ -1,0 +1,21 @@
+version: "0.1.0"
+description: Interaction module driver for ESP-Mosaico
+license: Apache-2.0
+
+targets:
+  - esp32s31
+
+dependencies:
+  idf: ">=6.2"
+
+  esp-mosaico-bsp:
+    version: "^0.2"
+    public: true
+    override_path: ../esp-mosaico-bsp
+
+  mosaico_module_mgr:
+    version: "^0.1"
+    public: true
+    override_path: ../mosaico_module_mgr
+
+  espressif/led_strip: "^3.0.3"
