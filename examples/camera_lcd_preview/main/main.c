@@ -137,6 +137,8 @@ static esp_err_t camera_wait_and_open(void)
     mosaico_camera_config_t config = MOSAICO_CAMERA_DEFAULT_CONFIG();
     /* Bring-up boards ship with an unprogrammed subboard EEPROM. */
     config.allow_unidentified = true;
+    config.width = 0;
+    config.height = 0;
 
     while (true) {
         esp_err_t ret = mosaico_camera_new(&config, &s_preview.camera);
@@ -333,9 +335,7 @@ void app_main(void)
 
     while (true) {
         ESP_ERROR_CHECK(camera_wait_and_open());
-        ESP_LOGI(
-            TAG,
-            "Preview started: OV3640 UYVY center crop -> PPA RGB565 -> CO5300");
+        ESP_LOGI(TAG, "Preview started: Camera UYVY center crop -> PPA RGB565 -> CO5300");
 
         const esp_err_t ret = preview_run();
         ESP_LOGW(
