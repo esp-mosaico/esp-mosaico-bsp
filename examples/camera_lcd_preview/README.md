@@ -1,7 +1,7 @@
 # Camera LCD Preview
 
-This example discovers and claims the Mosaico Camera subboard, captures OV3640
-UYVY frames, converts them to RGB565 with the PPA, and displays a live
+This example discovers and claims the Mosaico Camera subboard, captures UYVY
+frames from a supported sensor, converts them to RGB565 with the PPA, and displays a live
 480 x 480 preview on the onboard CO5300 LCD.
 
 The example intentionally uses the high-level `mosaico_camera` API. Application

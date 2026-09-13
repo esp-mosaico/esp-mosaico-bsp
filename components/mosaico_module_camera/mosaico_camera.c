@@ -595,24 +595,26 @@ static esp_err_t open_video_device(mosaico_camera_handle_t camera)
     ESP_RETURN_ON_FALSE(camera_is_ov3640(camera) || camera->sensor_id.pid == SC101IOT_PID, ESP_ERR_NOT_SUPPORTED, TAG,
                         "unsupported camera sensor pid=0x%04" PRIx16, camera->sensor_id.pid);
 
-    struct v4l2_format format = {
-        .type = V4L2_BUF_TYPE_VIDEO_CAPTURE,
-        .fmt.pix = {
-            .width = camera->config.width,
-            .height = camera->config.height,
-            .pixelformat =
-                pixel_format_to_v4l2(camera->config.pixel_format),
-        },
-    };
+    struct v4l2_format format = {.type = V4L2_BUF_TYPE_VIDEO_CAPTURE};
+    if (camera->config.width == 0) {
+        ESP_RETURN_ON_ERROR(camera_ioctl(camera->fd, VIDIOC_G_FMT, &format, "VIDIOC_G_FMT"), TAG,
+                            "get camera default format failed");
+    } else {
+        format.fmt.pix.width = camera->config.width;
+        format.fmt.pix.height = camera->config.height;
+    }
+    const uint32_t requested_width = format.fmt.pix.width;
+    const uint32_t requested_height = format.fmt.pix.height;
+    format.fmt.pix.pixelformat = pixel_format_to_v4l2(camera->config.pixel_format);
     ESP_RETURN_ON_ERROR(
         camera_ioctl(camera->fd, VIDIOC_S_FMT, &format, "VIDIOC_S_FMT"), TAG,
         "set camera format failed");
     const uint32_t requested_format = pixel_format_to_v4l2(camera->config.pixel_format);
-    if (format.fmt.pix.width != camera->config.width || format.fmt.pix.height != camera->config.height ||
+    if (format.fmt.pix.width != requested_width || format.fmt.pix.height != requested_height ||
         format.fmt.pix.pixelformat != requested_format) {
         ESP_LOGE(TAG, "Camera format mismatch: requested=%" PRIu32 "x%" PRIu32 "/0x%08" PRIx32
                       " actual=%" PRIu32 "x%" PRIu32 "/0x%08" PRIx32,
-                 camera->config.width, camera->config.height, requested_format, format.fmt.pix.width,
+                 requested_width, requested_height, requested_format, format.fmt.pix.width,
                  format.fmt.pix.height, format.fmt.pix.pixelformat);
         return ESP_ERR_NOT_SUPPORTED;
     }
@@ -704,7 +706,7 @@ esp_err_t mosaico_camera_new(const mosaico_camera_config_t *config,
         config ? *config
                : (mosaico_camera_config_t)MOSAICO_CAMERA_DEFAULT_CONFIG();
     ESP_RETURN_ON_FALSE(
-        active.width > 0 && active.height > 0 &&
+        ((active.width == 0 && active.height == 0) || (active.width > 0 && active.height > 0)) &&
             active.buffer_count >= 1 &&
             active.buffer_count <= CAMERA_MAX_BUFFER_COUNT &&
             active.frame_timeout_ms > 0 && active.discovery_timeout_ms > 0 &&

@@ -39,6 +39,7 @@ typedef enum {
 
 typedef struct {
     mosaico_module_mgr_slot_t slot;
+    /* Set both dimensions to zero to use the sensor Kconfig default. */
     uint32_t width;
     uint32_t height;
     mosaico_camera_pixel_format_t pixel_format;
