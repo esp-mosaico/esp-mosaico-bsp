@@ -46,7 +46,7 @@ typedef enum {
     MOSAICO_BOARD_TYPE_THERMAL     = 0x12,
     MOSAICO_BOARD_TYPE_RELAY       = 0x13,
     MOSAICO_BOARD_TYPE_BUTTON_LED  = 0x14,
-    MOSAICO_BOARD_TYPE_INTERACT    = 0x15,
+    MOSAICO_BOARD_TYPE_INTERACT    = 0x16,
 } mosaico_board_type_t;
 
 typedef enum {
