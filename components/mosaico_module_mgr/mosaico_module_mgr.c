@@ -44,6 +44,7 @@ typedef struct {
     bool claimed;
     bool unidentified_claim;
     bool needs_restore;
+    bool address_select_ready;
 } slot_state_t;
 
 typedef struct {
@@ -300,8 +301,25 @@ static void publish_presence(mosaico_module_mgr_slot_t slot, bool present,
 
     xSemaphoreTake(s_manager.lock, portMAX_DELAY);
     slot_state_t *state = &s_manager.slots[slot];
-    if (state->claimed) {
+    if (state->claimed && present) {
+        state->stable_present = true;
         xSemaphoreGive(s_manager.lock);
+        return;
+    }
+    if (state->claimed && !present) {
+        /* Keep the last EEPROM so a claimed camera still owns GPIO14 until release. */
+        state->info.generation++;
+        state->info.slot = slot;
+        state->info.eeprom_addr = slot_config->eeprom_addr;
+        state->info.state = MOSAICO_MODULE_MGR_STATE_EMPTY;
+        state->invalid_attempts = 0;
+        state->stable_present = false;
+        state->needs_restore = false;
+        event_info = state->info;
+        xSemaphoreGive(s_manager.lock);
+        ESP_LOGI(TAG, "Module removed: slot=%s eeprom=0x%02X",
+                 mosaico_module_mgr_slot_to_name(slot), event_info.eeprom_addr);
+        emit_event(MOSAICO_MODULE_MGR_EVENT_REMOVED, &event_info);
         return;
     }
     state->info.generation++;
@@ -393,12 +411,10 @@ static bool restore_slot_after_release(mosaico_module_mgr_slot_t slot,
     return false;
 }
 
-static bool discovery_blocked_locked(mosaico_module_mgr_slot_t slot)
+static bool slot_camera_owns_address_pin_locked(const slot_state_t *state)
 {
-    const slot_state_t *left = &s_manager.slots[MOSAICO_MODULE_MGR_SLOT_LEFT];
-    const bool left_reuses_address_pin = left->claimed &&
-                                         (left->unidentified_claim || left->info.eeprom.board_type == MOSAICO_BOARD_TYPE_CAMERA);
-    return s_manager.slots[slot].claimed || left_reuses_address_pin;
+    return state->claimed &&
+           state->info.eeprom.board_type == (uint8_t)MOSAICO_BOARD_TYPE_CAMERA;
 }
 
 static void scan_slot(mosaico_module_mgr_slot_t slot)
@@ -409,15 +425,25 @@ static void scan_slot(mosaico_module_mgr_slot_t slot)
     }
 
     xSemaphoreTake(s_manager.lock, portMAX_DELAY);
-    if (discovery_blocked_locked(slot)) {
+    const bool restore_address_select =
+        !slot_camera_owns_address_pin_locked(&s_manager.slots[slot]) &&
+        !s_manager.slots[slot].address_select_ready;
+    xSemaphoreGive(s_manager.lock);
+    if (restore_address_select &&
+            bsp_subboard_apply_address_select((bsp_subboard_slot_t)slot) == ESP_OK) {
+        xSemaphoreTake(s_manager.lock, portMAX_DELAY);
+        if (!slot_camera_owns_address_pin_locked(&s_manager.slots[slot])) {
+            s_manager.slots[slot].address_select_ready = true;
+            s_manager.slots[slot].invalid_attempts = 0;
+            s_manager.slots[slot].needs_restore = true;
+        }
         xSemaphoreGive(s_manager.lock);
-        return;
     }
 
-    /* Keep claim and probe mutually exclusive while connector pins are reusable. */
     const bool present = i2c_master_probe(bsp_subboard_get_i2c_bus(), slot_config.eeprom_addr,
                                           EEPROM_I2C_TIMEOUT_MS) == ESP_OK;
     bool publish = false;
+    xSemaphoreTake(s_manager.lock, portMAX_DELAY);
     slot_state_t *state = &s_manager.slots[slot];
     if (present != state->candidate_present) {
         state->candidate_present = present;
@@ -513,6 +539,7 @@ esp_err_t mosaico_module_mgr_init(const mosaico_module_mgr_config_t *config)
         s_manager.slots[i].info.slot = (mosaico_module_mgr_slot_t)i;
         s_manager.slots[i].info.eeprom_addr = eeprom_addr;
         s_manager.slots[i].info.state = MOSAICO_MODULE_MGR_STATE_EMPTY;
+        s_manager.slots[i].address_select_ready = true;
     }
 
     esp_err_t ret = attach_eeprom_devices();
@@ -672,6 +699,9 @@ esp_err_t mosaico_module_mgr_claim(mosaico_module_mgr_slot_t slot,
     }
     state->claimed = true;
     state->unidentified_claim = false;
+    if (expected_type == MOSAICO_BOARD_TYPE_CAMERA) {
+        state->address_select_ready = false;
+    }
     state->info.state = MOSAICO_MODULE_MGR_STATE_CLAIMED;
     state->info.generation++;
     event_info = state->info;
@@ -729,17 +759,25 @@ esp_err_t mosaico_module_mgr_release(mosaico_module_mgr_slot_t slot)
         xSemaphoreGive(s_manager.lock);
         return ESP_OK;
     }
+    const bool released_camera =
+        state->info.eeprom.board_type == (uint8_t)MOSAICO_BOARD_TYPE_CAMERA;
     state->claimed = false;
     state->unidentified_claim = false;
+    state->address_select_ready = false;
     state->info.generation++;
     state->needs_restore = true;
-    const bool restore_deferred = discovery_blocked_locked(slot);
     xSemaphoreGive(s_manager.lock);
 
     bsp_subboard_slot_config_t slot_config = {0};
     mosaico_module_mgr_info_t removed_info = {0};
     bool removed = false;
-    if (!restore_deferred && bsp_subboard_get_slot_config((bsp_subboard_slot_t)slot, &slot_config) == ESP_OK) {
+    if (bsp_subboard_get_slot_config((bsp_subboard_slot_t)slot, &slot_config) == ESP_OK) {
+        if (bsp_subboard_apply_address_select((bsp_subboard_slot_t)slot) == ESP_OK) {
+            xSemaphoreTake(s_manager.lock, portMAX_DELAY);
+            s_manager.slots[slot].address_select_ready = true;
+            s_manager.slots[slot].invalid_attempts = 0;
+            xSemaphoreGive(s_manager.lock);
+        }
         removed = restore_slot_after_release(slot, &slot_config, &removed_info);
     }
 
@@ -752,6 +790,8 @@ esp_err_t mosaico_module_mgr_release(mosaico_module_mgr_slot_t slot)
         ESP_LOGI(TAG, "Module removed: slot=%s eeprom=0x%02X",
                  mosaico_module_mgr_slot_to_name(slot), removed_info.eeprom_addr);
         emit_event(MOSAICO_MODULE_MGR_EVENT_REMOVED, &removed_info);
+    } else if (released_camera && event_info.state == MOSAICO_MODULE_MGR_STATE_READY) {
+        emit_event(MOSAICO_MODULE_MGR_EVENT_INSERTED, &event_info);
     }
     mosaico_module_mgr_request_rescan();
     return ESP_OK;

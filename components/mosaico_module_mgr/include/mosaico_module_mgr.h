@@ -151,8 +151,8 @@ esp_err_t mosaico_module_mgr_claim(mosaico_module_mgr_slot_t slot,
 /**
  * @brief Claim a slot whose EEPROM never identified a board
  *
- * Stops scanning the slot like a normal claim does, so the driver may repurpose
- * the connector pins. The caller takes responsibility for what is plugged in.
+ * Scanning continues so unplug can still be detected. The caller takes
+ * responsibility for what is plugged in.
  */
 esp_err_t mosaico_module_mgr_claim_unidentified(mosaico_module_mgr_slot_t slot);
 

@@ -9,6 +9,7 @@
 
 #include "bsp/esp_mosaico.h"
 #include "bsp/power.h"
+#include "driver/gpio.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -99,6 +100,9 @@ static esp_err_t init_i2c_bus(void)
 
 static esp_err_t configure_address_select(const bsp_subboard_slot_config_t *slot)
 {
+    /* Camera D4 reuses GPIO14. Disconnect the old function before driving A0. */
+    ESP_RETURN_ON_ERROR(gpio_reset_pin(slot->address_select_gpio), TAG,
+                        "reset slot %d address GPIO failed", slot->slot);
     const gpio_config_t config = {
         .pin_bit_mask = BIT64(slot->address_select_gpio),
         .mode = GPIO_MODE_OUTPUT,
