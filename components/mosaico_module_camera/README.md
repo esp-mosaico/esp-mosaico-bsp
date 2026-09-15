@@ -20,9 +20,10 @@ ESP_ERROR_CHECK(mosaico_camera_close(camera));
 ESP_ERROR_CHECK(mosaico_camera_del(camera));
 ```
 
-The default is 1024x768 UYVY with four buffers. A frame remains owned by the
-caller until `mosaico_camera_return_frame()` is called. Return all frames before
-calling `mosaico_camera_stop_stream()`, `mosaico_camera_close()`, or
+By default, the camera uses the sensor's Kconfig-selected resolution in UYVY
+format with two buffers. A frame remains owned by the caller until
+`mosaico_camera_return_frame()` is called. Return all frames before calling
+`mosaico_camera_stop_stream()`, `mosaico_camera_close()`, or
 `mosaico_camera_restart()`. Closing capture keeps `/dev/video2` registered so
 another consumer can open it.
 

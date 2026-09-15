@@ -18,6 +18,7 @@
 
 static const char *TAG = "button_led_test";
 static uint32_t s_pressed_buttons;
+static bool s_led_available;
 
 static const char *button_name(bsp_button_t button)
 {
@@ -39,9 +40,11 @@ static void update_led(bsp_button_t button, bool pressed)
         s_pressed_buttons &= ~mask;
     }
 
-    esp_err_t ret = bsp_led_set(s_pressed_buttons != 0);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Set status LED failed: %s", esp_err_to_name(ret));
+    if (s_led_available) {
+        esp_err_t ret = bsp_led_set(s_pressed_buttons != 0);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Set status LED failed: %s", esp_err_to_name(ret));
+        }
     }
 }
 
@@ -108,8 +111,14 @@ void app_main(void)
     button_handle_t buttons[BSP_BUTTON_NUM] = {0};
     int button_count = 0;
 
-    ESP_ERROR_CHECK(bsp_led_init());
-    ESP_ERROR_CHECK(bsp_led_set(false));
+    esp_err_t led_ret = bsp_led_init();
+    if (led_ret == ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGW(TAG, "Status LED unavailable; continuing with button events only");
+    } else {
+        ESP_ERROR_CHECK(led_ret);
+        ESP_ERROR_CHECK(bsp_led_set(false));
+        s_led_available = true;
+    }
     ESP_ERROR_CHECK(bsp_iot_button_create(buttons, &button_count, BSP_BUTTON_NUM));
     ESP_LOGI(TAG, "Created %d GPIO buttons", button_count);
 
@@ -118,7 +127,11 @@ void app_main(void)
         ESP_LOGI(TAG, "Registered %s button", button_name((bsp_button_t)i));
     }
 
-    ESP_LOGI(TAG, "Press AI to turn on the status LED");
+    if (s_led_available) {
+        ESP_LOGI(TAG, "Press AI to turn on the status LED");
+    } else {
+        ESP_LOGI(TAG, "Press AI to test button events");
+    }
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
     }

@@ -1,0 +1,9 @@
+dependencies:
+  idf:
+    version: ">=6.2"
+
+  mosaico_module_camera:
+    path: ../../../components/mosaico_module_camera
+
+  mosaico_module_interact:
+    path: ../../../components/mosaico_module_interact

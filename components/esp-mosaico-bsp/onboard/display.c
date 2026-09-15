@@ -176,9 +176,9 @@ static esp_err_t apply_touch_orientation(bsp_display_rotation_t rotation)
     bool swap_xy, mirror_x, mirror_y;
     compose_orientation(BSP_TOUCH_BASE_SWAP_XY, BSP_TOUCH_BASE_MIRROR_X, BSP_TOUCH_BASE_MIRROR_Y,
                         rotation, &swap_xy, &mirror_x, &mirror_y);
-    ESP_RETURN_ON_ERROR(esp_lcd_touch_set_swap_xy(s_touch, swap_xy), TAG, "set CST9217 axis swap failed");
-    ESP_RETURN_ON_ERROR(esp_lcd_touch_set_mirror_x(s_touch, mirror_x), TAG, "set CST9217 X mirror failed");
-    ESP_RETURN_ON_ERROR(esp_lcd_touch_set_mirror_y(s_touch, mirror_y), TAG, "set CST9217 Y mirror failed");
+    ESP_RETURN_ON_ERROR(esp_lcd_touch_set_swap_xy(s_touch, swap_xy), TAG, "set lcd_touch axis swap failed");
+    ESP_RETURN_ON_ERROR(esp_lcd_touch_set_mirror_x(s_touch, mirror_x), TAG, "set lcd_touch X mirror failed");
+    ESP_RETURN_ON_ERROR(esp_lcd_touch_set_mirror_y(s_touch, mirror_y), TAG, "set lcd_touch Y mirror failed");
     return ESP_OK;
 }
 
@@ -310,7 +310,7 @@ esp_err_t bsp_touch_new(bsp_display_rotation_t rotation, esp_lcd_touch_handle_t 
     /* Left at 0 the transfer waits forever, and it runs under the LVGL lock. */
     io_config.transaction_timeout_ms = BSP_LCD_TOUCH_I2C_TIMEOUT_MS;
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_i2c(bsp_i2c_get_handle(), &io_config, &s_touch_io), TAG,
-                        "create CST9217 panel IO failed");
+                        "create touch panel IO failed");
     esp_err_t ret = esp_lcd_touch_new_i2c_cst9220(s_touch_io, &touch_config, &s_touch);
     if (ret != ESP_OK) {
         esp_lcd_panel_io_del(s_touch_io);
@@ -318,7 +318,7 @@ esp_err_t bsp_touch_new(bsp_display_rotation_t rotation, esp_lcd_touch_handle_t 
         return ret;
     }
     *ret_touch = s_touch;
-    ESP_LOGI(TAG, "CST9217 initialized: INT=%d reset=NC shared_I2C=%d rotation=%d",
+    ESP_LOGI(TAG, "touch initialized: INT=%d reset=NC shared_I2C=%d rotation=%d",
              BSP_LCD_TOUCH_INT, BSP_I2C_PORT, (int)rotation);
     return ESP_OK;
 }

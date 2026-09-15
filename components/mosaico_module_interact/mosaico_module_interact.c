@@ -56,6 +56,7 @@ typedef struct {
 struct mosaico_interact_t {
     mosaico_interact_config_t config;
     mosaico_module_mgr_slot_t slot;
+    mosaico_module_lease_t lease;
     mosaico_interact_hw_config_t hardware;
     mosaico_interact_button_mode_t active_input;
     bool subboard_claimed;
@@ -750,10 +751,10 @@ static size_t build_nec_symbols(uint8_t address, uint8_t command,
     return n;
 }
 
-static void release_resources(mosaico_interact_handle_t handle)
+static esp_err_t release_resources(mosaico_interact_handle_t handle)
 {
     if (!handle) {
-        return;
+        return ESP_OK;
     }
 
     stop_touch(handle);
@@ -766,14 +767,17 @@ static void release_resources(mosaico_interact_handle_t handle)
     release_ir(handle);
     release_adc(handle);
     if (handle->subboard_claimed) {
-        esp_err_t ret = mosaico_module_mgr_release(handle->slot);
+        esp_err_t ret = mosaico_module_mgr_release(&handle->lease);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Release slot %s failed: %s",
                      mosaico_module_mgr_slot_to_name(handle->slot),
                      esp_err_to_name(ret));
+            return ret;
         }
         handle->subboard_claimed = false;
+        handle->lease = (mosaico_module_lease_t) {0};
     }
+    return ESP_OK;
 }
 
 esp_err_t mosaico_interact_open(const mosaico_interact_config_t *config, mosaico_interact_handle_t *out_handle)
@@ -797,19 +801,12 @@ esp_err_t mosaico_interact_open(const mosaico_interact_config_t *config, mosaico
     ESP_RETURN_ON_ERROR(mosaico_module_mgr_init(NULL), TAG,
                         "initialize subboard manager failed");
 
-    mosaico_module_mgr_info_t subboard = {0};
-    esp_err_t ret = mosaico_module_mgr_wait_for(
-        MOSAICO_BOARD_TYPE_INTERACT, active.slot,
-        active.discovery_timeout_ms, &subboard);
-    ESP_RETURN_ON_ERROR(ret, TAG, "discover interaction subboard failed");
-
     mosaico_interact_handle_t handle =
         heap_caps_calloc(1, sizeof(*handle),
                          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     ESP_RETURN_ON_FALSE(handle, ESP_ERR_NO_MEM, TAG,
                         "allocate interact context failed");
     handle->config = active;
-    handle->slot = subboard.slot;
     handle->active_input = MOSAICO_INTERACT_BUTTON_MODE_GPIO;
 
     handle->lock = xSemaphoreCreateMutex();
@@ -818,10 +815,16 @@ esp_err_t mosaico_interact_open(const mosaico_interact_config_t *config, mosaico
         return ESP_ERR_NO_MEM;
     }
 
-    ret = mosaico_module_mgr_claim(handle->slot, MOSAICO_BOARD_TYPE_INTERACT);
+    const mosaico_module_mgr_claim_config_t claim_config = {
+        .expected_type = MOSAICO_BOARD_TYPE_INTERACT,
+        .slot = active.slot,
+        .timeout_ms = active.discovery_timeout_ms,
+    };
+    esp_err_t ret = mosaico_module_mgr_claim(&claim_config, &handle->lease);
     if (ret != ESP_OK) {
         goto fail;
     }
+    handle->slot = handle->lease.slot;
     handle->subboard_claimed = true;
 
     ret = get_hw_config((bsp_subboard_slot_t)handle->slot, &handle->hardware);
@@ -873,7 +876,10 @@ esp_err_t mosaico_interact_open(const mosaico_interact_config_t *config, mosaico
     return ESP_OK;
 
 fail:
-    release_resources(handle);
+    if (release_resources(handle) != ESP_OK) {
+        *out_handle = handle;
+        return ret;
+    }
     vSemaphoreDelete(handle->lock);
     heap_caps_free(handle);
     return ret;
@@ -1045,7 +1051,11 @@ esp_err_t mosaico_interact_close(mosaico_interact_handle_t handle)
         return ESP_ERR_INVALID_STATE;
     }
     const mosaico_module_mgr_slot_t slot = handle->slot;
-    release_resources(handle);
+    esp_err_t ret = release_resources(handle);
+    if (ret != ESP_OK) {
+        xSemaphoreGive(handle->lock);
+        return ret;
+    }
     xSemaphoreGive(handle->lock);
     vSemaphoreDelete(handle->lock);
     heap_caps_free(handle);

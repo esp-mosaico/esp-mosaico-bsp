@@ -61,7 +61,7 @@ typedef struct {
 struct mosaico_joystick_t {
     mosaico_joystick_config_t config;
     mosaico_module_mgr_slot_t slot;
-    uint32_t claim_generation;
+    mosaico_module_lease_t lease;
     joystick_hardware_t hardware;
     adc_unit_t unit_x;
     adc_unit_t unit_y;
@@ -71,6 +71,7 @@ struct mosaico_joystick_t {
     adc_oneshot_unit_handle_t adc_y;
     bool unit_x_acquired;
     bool unit_y_acquired;
+    bool hardware_configured;
     bool subboard_claimed;
     SemaphoreHandle_t lock;
     mosaico_joystick_data_t data;
@@ -204,37 +205,6 @@ static esp_err_t get_hardware_config(bsp_subboard_slot_t slot, joystick_hardware
     return ESP_OK;
 }
 
-static esp_err_t wait_for_available_joystick(
-    mosaico_module_mgr_slot_t preferred_slot, uint32_t timeout_ms,
-    mosaico_module_mgr_info_t *out_info)
-{
-    const TickType_t start = xTaskGetTickCount();
-    const TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
-    do {
-        for (size_t i = 0; i < MOSAICO_MODULE_MGR_SLOT_COUNT; ++i) {
-            const mosaico_module_mgr_slot_t slot =
-                preferred_slot == MOSAICO_MODULE_MGR_SLOT_AUTO
-                    ? (mosaico_module_mgr_slot_t)i
-                    : preferred_slot;
-            mosaico_module_mgr_info_t info = {0};
-            esp_err_t ret = mosaico_module_mgr_get_info(slot, &info);
-            if (ret != ESP_OK) {
-                return ret;
-            }
-            if (info.state == MOSAICO_MODULE_MGR_STATE_READY &&
-                info.eeprom.board_type == MOSAICO_BOARD_TYPE_HANDLE) {
-                *out_info = info;
-                return ESP_OK;
-            }
-            if (preferred_slot != MOSAICO_MODULE_MGR_SLOT_AUTO) {
-                break;
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(20));
-    } while (xTaskGetTickCount() - start < timeout);
-    return ESP_ERR_TIMEOUT;
-}
-
 static esp_err_t check_present_locked(mosaico_joystick_handle_t handle)
 {
     mosaico_module_mgr_info_t info = {0};
@@ -242,8 +212,9 @@ static esp_err_t check_present_locked(mosaico_joystick_handle_t handle)
     if (ret != ESP_OK) {
         return ret;
     }
-    if (info.state != MOSAICO_MODULE_MGR_STATE_CLAIMED ||
-        info.generation != handle->claim_generation ||
+    if (info.presence != MOSAICO_MODULE_PRESENCE_PRESENT ||
+        info.owner_state != MOSAICO_MODULE_OWNER_CLAIMED ||
+        info.descriptor_state != MOSAICO_MODULE_DESCRIPTOR_VALID ||
         info.eeprom.board_type != MOSAICO_BOARD_TYPE_HANDLE) {
         return ESP_ERR_NOT_FOUND;
     }
@@ -524,16 +495,19 @@ static esp_err_t configure_hardware(mosaico_joystick_handle_t handle)
     return ESP_OK;
 }
 
-static void release_resources(mosaico_joystick_handle_t handle)
+static esp_err_t release_resources(mosaico_joystick_handle_t handle)
 {
     if (!handle) {
-        return;
+        return ESP_OK;
     }
-    for (size_t i = 0; i < MOSAICO_JOYSTICK_BUTTON_COUNT; ++i) {
-        gpio_reset_pin(handle->hardware.buttons[i].io);
+    if (handle->hardware_configured) {
+        for (size_t i = 0; i < MOSAICO_JOYSTICK_BUTTON_COUNT; ++i) {
+            gpio_reset_pin(handle->hardware.buttons[i].io);
+        }
+        gpio_reset_pin(handle->hardware.x_io);
+        gpio_reset_pin(handle->hardware.y_io);
+        handle->hardware_configured = false;
     }
-    gpio_reset_pin(handle->hardware.x_io);
-    gpio_reset_pin(handle->hardware.y_io);
     if (handle->unit_y_acquired) {
         release_adc_unit(handle->unit_y);
         handle->unit_y_acquired = false;
@@ -543,14 +517,17 @@ static void release_resources(mosaico_joystick_handle_t handle)
         handle->unit_x_acquired = false;
     }
     if (handle->subboard_claimed) {
-        esp_err_t ret = mosaico_module_mgr_release(handle->slot);
+        esp_err_t ret = mosaico_module_mgr_release(&handle->lease);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Release joystick slot %s failed: %s",
                      mosaico_module_mgr_slot_to_name(handle->slot),
                      esp_err_to_name(ret));
+            return ret;
         }
         handle->subboard_claimed = false;
+        handle->lease = (mosaico_module_lease_t) {0};
     }
+    return ESP_OK;
 }
 
 esp_err_t mosaico_joystick_new(const mosaico_joystick_config_t *config,
@@ -567,40 +544,39 @@ esp_err_t mosaico_joystick_new(const mosaico_joystick_config_t *config,
     ESP_RETURN_ON_ERROR(mosaico_module_mgr_init(NULL), TAG,
                         "initialize module manager failed");
 
-    mosaico_module_mgr_info_t info = {0};
-    ESP_RETURN_ON_ERROR(wait_for_available_joystick(
-                            active.slot, active.discovery_timeout_ms, &info),
-                        TAG, "discover joystick subboard failed");
-
     mosaico_joystick_handle_t handle =
         heap_caps_calloc(1, sizeof(*handle), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     ESP_RETURN_ON_FALSE(handle, ESP_ERR_NO_MEM, TAG,
                         "allocate joystick context failed");
     handle->config = active;
-    handle->slot = info.slot;
-    handle->data.slot = info.slot;
     handle->lock = xSemaphoreCreateMutex();
     if (!handle->lock) {
         heap_caps_free(handle);
         return ESP_ERR_NO_MEM;
     }
 
-    esp_err_t ret =
-        mosaico_module_mgr_claim(handle->slot, MOSAICO_BOARD_TYPE_HANDLE);
+    const mosaico_module_mgr_claim_config_t claim_config = {
+        .expected_type = MOSAICO_BOARD_TYPE_HANDLE,
+        .slot = active.slot,
+        .timeout_ms = active.discovery_timeout_ms,
+    };
+    esp_err_t ret = mosaico_module_mgr_claim(&claim_config, &handle->lease);
     if (ret != ESP_OK) {
         goto fail;
     }
+    handle->slot = handle->lease.slot;
+    handle->data.slot = handle->lease.slot;
     handle->subboard_claimed = true;
+    mosaico_module_mgr_info_t info = {0};
     ret = mosaico_module_mgr_get_info(handle->slot, &info);
     if (ret != ESP_OK) {
         goto fail;
     }
-    handle->claim_generation = info.generation;
-
     ret = get_hardware_config((bsp_subboard_slot_t)handle->slot, &handle->hardware);
     if (ret != ESP_OK) {
         goto fail;
     }
+    handle->hardware_configured = true;
     ret = configure_hardware(handle);
     if (ret != ESP_OK) {
         goto fail;
@@ -614,7 +590,10 @@ esp_err_t mosaico_joystick_new(const mosaico_joystick_config_t *config,
     return ESP_OK;
 
 fail:
-    release_resources(handle);
+    if (release_resources(handle) != ESP_OK) {
+        *out_handle = handle;
+        return ret;
+    }
     vSemaphoreDelete(handle->lock);
     heap_caps_free(handle);
     return ret;
@@ -731,7 +710,11 @@ esp_err_t mosaico_joystick_del(mosaico_joystick_handle_t handle)
                         "joystick handle is null");
     xSemaphoreTake(handle->lock, portMAX_DELAY);
     const mosaico_module_mgr_slot_t slot = handle->slot;
-    release_resources(handle);
+    esp_err_t ret = release_resources(handle);
+    if (ret != ESP_OK) {
+        xSemaphoreGive(handle->lock);
+        return ret;
+    }
     xSemaphoreGive(handle->lock);
     vSemaphoreDelete(handle->lock);
     heap_caps_free(handle);

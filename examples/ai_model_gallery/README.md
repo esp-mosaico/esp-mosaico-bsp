@@ -7,15 +7,16 @@ Cycles detection models with the AI button:
 3. **idle** — camera only, no inference
 
 Only one model is constructed at a time to limit PSRAM/flash pressure.
-Switching modes stops the camera and hardware JPEG decoder first so the
-RGB888/rotation buffers do not fragment PSRAM before the next model is
-built. Results are logged to the console (no LCD overlay).
+Switching modes stops the camera and releases the PPA conversion buffer first
+so it does not fragment PSRAM before the next model is built. The LCD shows a
+live square preview with the current mode and detection count. Detailed results
+are also logged to the console.
 
-The camera emits JPEG directly and the ESP32-S31 hardware JPEG engine decodes
-into one reusable RGB888 buffer for inference. Face mode also rotates the
-frame 90 degrees so an upright portrait face matches the detector. COCO
-skips rotation so YOLO11n and a second RGB888 buffer are not resident at
-once. No-detection frames are silent at default log level.
+The camera uses its default UYVY resolution. The ESP32-S31 PPA converts each
+frame into one reusable BGR888 buffer for inference, supporting both OV3640
+and SC101IOT modules. Face mode also rotates the frame 90 degrees so an upright
+portrait face matches the detector. No-detection frames are silent at default
+log level.
 
 ## Hardware
 

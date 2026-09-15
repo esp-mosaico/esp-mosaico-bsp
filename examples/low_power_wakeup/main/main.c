@@ -71,14 +71,22 @@ void app_main(void)
 
     ESP_ERROR_CHECK(bsp_power_init());
     ESP_ERROR_CHECK(bsp_power_set_vcc_3v3(true));
-    ESP_ERROR_CHECK(bsp_led_init());
+    esp_err_t led_ret = bsp_led_init();
+    if (led_ret == ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGW(TAG, "Status LED unavailable; continuing without awake pulse");
+    } else {
+        ESP_ERROR_CHECK(led_ret);
+    }
+    const bool led_available = led_ret == ESP_OK;
 
     /* Visible “awake” pulse. */
-    for (int i = 0; i < 3; ++i) {
-        (void)bsp_led_set(true);
-        vTaskDelay(pdMS_TO_TICKS(120));
-        (void)bsp_led_set(false);
-        vTaskDelay(pdMS_TO_TICKS(120));
+    if (led_available) {
+        for (int i = 0; i < 3; ++i) {
+            (void)bsp_led_set(true);
+            vTaskDelay(pdMS_TO_TICKS(120));
+            (void)bsp_led_set(false);
+            vTaskDelay(pdMS_TO_TICKS(120));
+        }
     }
 
     ESP_LOGI(TAG, "awake for %ds…", AWAKE_SEC);

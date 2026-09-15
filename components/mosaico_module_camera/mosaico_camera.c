@@ -84,6 +84,7 @@ static const ov3640_reg_t s_ov3640_advanced_awb[] = {
 struct mosaico_camera_t {
     mosaico_camera_config_t config;
     mosaico_camera_info_t info;
+    mosaico_module_lease_t lease;
     mosaico_camera_hw_config_t hardware;
     SemaphoreHandle_t lock;
     int fd;
@@ -184,7 +185,6 @@ static esp_err_t camera_hardware_release(bsp_subboard_slot_t slot)
         return ESP_OK;
     }
 
-    ESP_RETURN_ON_ERROR(bsp_subboard_apply_address_select(slot), TAG, "restore camera slot address select failed");
     if (restore_clock) {
         usb_serial_jtag_ll_enable_bus_clock(true);
     }
@@ -527,12 +527,13 @@ static esp_err_t release_resources(mosaico_camera_handle_t camera)
     }
 
     if (camera->subboard_claimed) {
-        ret = mosaico_module_mgr_release(camera->info.slot);
+        ret = mosaico_module_mgr_release(&camera->lease);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Release camera module failed; context retained: %s", esp_err_to_name(ret));
             return ret;
         }
         camera->subboard_claimed = false;
+        camera->lease = (mosaico_module_lease_t) {0};
     }
     return ESP_OK;
 }
@@ -722,31 +723,6 @@ esp_err_t mosaico_camera_new(const mosaico_camera_config_t *config,
     ESP_RETURN_ON_ERROR(mosaico_module_mgr_init(NULL), TAG,
                         "initialize module manager failed");
 
-    mosaico_module_mgr_info_t module_info = {0};
-    esp_err_t ret = mosaico_module_mgr_wait_for(
-        MOSAICO_BOARD_TYPE_CAMERA, active.slot,
-        active.discovery_timeout_ms, &module_info);
-    if (ret != ESP_OK && active.slot == MOSAICO_MODULE_MGR_SLOT_AUTO) {
-        mosaico_module_mgr_info_t right = {0};
-        if (mosaico_module_mgr_find(MOSAICO_BOARD_TYPE_CAMERA,
-                                  MOSAICO_MODULE_MGR_SLOT_RIGHT,
-                                  &right) == ESP_OK) {
-            ESP_LOGE(TAG, "Camera detected in unsupported right slot: %s",
-                     esp_err_to_name(ESP_ERR_NOT_SUPPORTED));
-            return ESP_ERR_NOT_SUPPORTED;
-        }
-    }
-    const bool identified = ret == ESP_OK;
-    if (!identified) {
-        ESP_RETURN_ON_FALSE(active.allow_unidentified, ret, TAG,
-                            "discover camera subboard failed");
-        ESP_LOGW(TAG, "No camera descriptor found, opening the left slot anyway");
-        module_info.slot = MOSAICO_MODULE_MGR_SLOT_LEFT;
-    }
-    ESP_RETURN_ON_FALSE(module_info.slot == MOSAICO_MODULE_MGR_SLOT_LEFT,
-                        ESP_ERR_NOT_SUPPORTED, TAG,
-                        "camera subboard supports the left slot only");
-
     mosaico_camera_handle_t camera =
         heap_caps_calloc(1, sizeof(*camera),
                          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -754,7 +730,7 @@ esp_err_t mosaico_camera_new(const mosaico_camera_config_t *config,
                         "allocate camera context failed");
     camera->config = active;
     camera->fd = -1;
-    camera->info.slot = module_info.slot;
+    camera->info.slot = MOSAICO_MODULE_MGR_SLOT_LEFT;
     camera->lock = xSemaphoreCreateMutex();
     if (!camera->lock) {
         heap_caps_free(camera);
@@ -763,8 +739,15 @@ esp_err_t mosaico_camera_new(const mosaico_camera_config_t *config,
         return ESP_ERR_NO_MEM;
     }
 
-    ret = identified ? mosaico_module_mgr_claim(module_info.slot, MOSAICO_BOARD_TYPE_CAMERA)
-                     : mosaico_module_mgr_claim_unidentified(module_info.slot);
+    const mosaico_module_mgr_claim_config_t claim_config = {
+        .expected_type = MOSAICO_BOARD_TYPE_CAMERA,
+        .slot = MOSAICO_MODULE_MGR_SLOT_LEFT,
+        .timeout_ms = active.discovery_timeout_ms,
+        .flags = MOSAICO_MODULE_CLAIM_USE_SLOT_CONTROL_GPIO |
+                 MOSAICO_MODULE_CLAIM_PROBE_WHILE_CLAIMED |
+                 (active.allow_unidentified ? MOSAICO_MODULE_CLAIM_ALLOW_INVALID_DESCRIPTOR : 0),
+    };
+    esp_err_t ret = mosaico_module_mgr_claim(&claim_config, &camera->lease);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Claim camera subboard failed: %s",
                  esp_err_to_name(ret));

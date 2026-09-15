@@ -80,7 +80,7 @@ static void app_touch_task(void *arg)
 esp_err_t app_touch_init(void)
 {
     ESP_RETURN_ON_ERROR(bsp_touch_new(bsp_display_get_rotation(), &tp), TAG,
-                        "initialize CST9217 failed");
+                        "initialize failed");
 
     s_touch_width = BSP_LCD_H_RES - 1;
     s_touch_height = BSP_LCD_V_RES - 1;
@@ -92,7 +92,7 @@ esp_err_t app_touch_init(void)
     BaseType_t task_created = xTaskCreate(app_touch_task, "app_touch_task", 4096, NULL,
                                           CONFIG_TOUCH_TASK_PRIORITY, NULL);
     ESP_RETURN_ON_FALSE(task_created == pdPASS, ESP_ERR_NO_MEM, TAG, "create touch task failed");
-    ESP_LOGI(TAG, "CST9217 touch ready: source=%ux%u display=%ux%u",
+    ESP_LOGI(TAG, "touch ready: source=%ux%u display=%ux%u",
              s_touch_width + 1, s_touch_height + 1, s_display_width + 1, s_display_height + 1);
     return ESP_OK;
 }

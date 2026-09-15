@@ -33,9 +33,6 @@
 
 #define PREVIEW_WIDTH              BSP_LCD_H_RES
 #define PREVIEW_HEIGHT             BSP_LCD_V_RES
-#define PREVIEW_CROP_WIDTH         768
-#define PREVIEW_CROP_HEIGHT        768
-#define PREVIEW_SCALE              (480.0f / 768.0f)
 #define PREVIEW_BUFFER_ALIGNMENT   128
 #define CAPTURE_FAILURE_LIMIT      3
 #define CAMERA_RETRY_DELAY_MS      500
@@ -336,31 +333,27 @@ static esp_err_t init_top_button(void)
     return ESP_OK;
 }
 
-static void subboard_event_callback(mosaico_module_mgr_event_t event,
-                                    const mosaico_module_mgr_info_t *info,
-                                    void *user_data)
+static void subboard_event_callback(const mosaico_module_mgr_event_t *event, void *user_data)
 {
     (void)user_data;
 
-    if (event == MOSAICO_MODULE_MGR_EVENT_REMOVED &&
-        info->eeprom.board_type == MOSAICO_BOARD_TYPE_BUTTON_LED) {
+    if ((event->changes & MOSAICO_MODULE_CHANGE_PRESENCE) &&
+        event->info.presence == MOSAICO_MODULE_PRESENCE_ABSENT &&
+        event->info.eeprom.board_type == MOSAICO_BOARD_TYPE_BUTTON_LED) {
         s_button_board_removed = true;
         ESP_LOGI(TAG, "Button sub-board removed from %s slot",
-                 mosaico_module_mgr_slot_to_name(info->slot));
+                 mosaico_module_mgr_slot_to_name(event->info.slot));
     }
 }
 
 static esp_err_t init_subboard_manager(void)
 {
-    const mosaico_module_mgr_config_t manager_config = {
-        .scan_period_ms = 1000,
-        .debounce_count = 3,
-    };
-    ESP_RETURN_ON_ERROR(mosaico_module_mgr_subscribe(subboard_event_callback, NULL), TAG, "subscribe module events failed");
-    const esp_err_t ret = mosaico_module_mgr_init(&manager_config);
+    const mosaico_module_mgr_config_t manager_config = MOSAICO_MODULE_MGR_DEFAULT_CONFIG();
+    ESP_RETURN_ON_ERROR(mosaico_module_mgr_init(&manager_config), TAG, "initialize module manager failed");
+    static mosaico_module_subscription_t subscription;
+    const esp_err_t ret = mosaico_module_mgr_subscribe(subboard_event_callback, NULL, &subscription);
     if (ret != ESP_OK) {
-        (void)mosaico_module_mgr_unsubscribe(subboard_event_callback);
-        ESP_LOGE(TAG, "Initialize module manager failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Subscribe module events failed: %s", esp_err_to_name(ret));
     }
     return ret;
 }
@@ -516,13 +509,11 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
         frame->pixel_format == V4L2_PIX_FMT_UYVY,
         ESP_ERR_NOT_SUPPORTED, TAG,
         "unsupported camera format 0x%08" PRIx32, frame->pixel_format);
-    ESP_RETURN_ON_FALSE(
-        frame->width >= PREVIEW_CROP_WIDTH && frame->height >= PREVIEW_CROP_HEIGHT,
-        ESP_ERR_INVALID_SIZE, TAG,
-        "camera frame is smaller than the crop window");
-
-    const uint32_t bytes_per_line =
-        frame->bytes_per_line ? frame->bytes_per_line : frame->width * 2U;
+    const uint32_t crop_size = align_down_even(frame->width < frame->height ? frame->width : frame->height);
+    ESP_RETURN_ON_FALSE(crop_size > 0, ESP_ERR_INVALID_SIZE, TAG, "invalid camera frame size: %" PRIu32 "x%" PRIu32,
+                        frame->width, frame->height);
+    const uint32_t bytes_per_line = frame->bytes_per_line ? frame->bytes_per_line : frame->width * 2U;
+    ESP_RETURN_ON_FALSE((bytes_per_line % 2U) == 0, ESP_ERR_INVALID_SIZE, TAG, "camera stride is not pixel aligned");
 
     ESP_RETURN_ON_ERROR(
         esp_cache_msync(
@@ -541,12 +532,10 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
             .buffer = frame->data,
             .pic_w = bytes_per_line / 2U,
             .pic_h = frame->height,
-            .block_w = PREVIEW_CROP_WIDTH,
-            .block_h = PREVIEW_CROP_HEIGHT,
-            .block_offset_x =
-                align_down_even((frame->width - PREVIEW_CROP_WIDTH) / 2U),
-            .block_offset_y =
-                align_down_even((frame->height - PREVIEW_CROP_HEIGHT) / 2U),
+            .block_w = crop_size,
+            .block_h = crop_size,
+            .block_offset_x = align_down_even((frame->width - crop_size) / 2U),
+            .block_offset_y = align_down_even((frame->height - crop_size) / 2U),
             .srm_cm = PPA_SRM_COLOR_MODE_YUV422_UYVY,
             .yuv_range = PPA_COLOR_RANGE_LIMIT,
             .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,
@@ -559,8 +548,8 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
             .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
         },
         .rotation_angle = PPA_SRM_ROTATION_ANGLE_270,
-        .scale_x = PREVIEW_SCALE,
-        .scale_y = PREVIEW_SCALE,
+        .scale_x = (float)PREVIEW_WIDTH / (float)crop_size,
+        .scale_y = (float)PREVIEW_HEIGHT / (float)crop_size,
         .mirror_x = s_app.preview_flip,
         .mirror_y = false,
         .mode = PPA_TRANS_MODE_BLOCKING,

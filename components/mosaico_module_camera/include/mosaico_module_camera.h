@@ -18,8 +18,8 @@ extern "C" {
 
 #define MOSAICO_CAMERA_DEFAULT_CONFIG() {                        \
     .slot = MOSAICO_MODULE_MGR_SLOT_AUTO,                        \
-    .width = 1024,                                               \
-    .height = 768,                                               \
+    .width = 0,                                                  \
+    .height = 0,                                                 \
     .pixel_format = MOSAICO_CAMERA_PIXEL_FORMAT_UYVY,            \
     .buffer_count = 2,                                           \
     .frame_timeout_ms = 1000,                                    \
