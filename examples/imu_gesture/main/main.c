@@ -18,6 +18,7 @@
 #include "freertos/task.h"
 
 static const char *TAG = "imu_gesture";
+static bool s_led_available;
 
 #define SAMPLE_PERIOD_MS     40
 #define STARTUP_DELAY_MS     80
@@ -50,11 +51,15 @@ static const char *gesture_name(gesture_t g)
 
 static void feedback(void)
 {
-    (void)bsp_led_set(true);
+    if (s_led_available) {
+        (void)bsp_led_set(true);
+    }
     (void)bsp_motor_set(true);
     vTaskDelay(pdMS_TO_TICKS(MOTOR_PULSE_MS));
     (void)bsp_motor_set(false);
-    (void)bsp_led_set(false);
+    if (s_led_available) {
+        (void)bsp_led_set(false);
+    }
 }
 
 static gesture_t classify(float ax, float ay, float az, float prev_mag, float cur_mag)
@@ -76,7 +81,13 @@ void app_main(void)
     const bsp_imu_config_t config = BSP_IMU_CONFIG_DEFAULT();
 
     ESP_LOGI(TAG, "BMI270 gesture demo");
-    ESP_ERROR_CHECK(bsp_led_init());
+    esp_err_t led_ret = bsp_led_init();
+    if (led_ret == ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGW(TAG, "Status LED unavailable; continuing with motor feedback only");
+    } else {
+        ESP_ERROR_CHECK(led_ret);
+        s_led_available = true;
+    }
     ESP_ERROR_CHECK(bsp_motor_init());
     ESP_ERROR_CHECK(bsp_imu_init());
     ESP_ERROR_CHECK(bsp_imu_start(&config));

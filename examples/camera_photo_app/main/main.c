@@ -336,31 +336,27 @@ static esp_err_t init_top_button(void)
     return ESP_OK;
 }
 
-static void subboard_event_callback(mosaico_module_mgr_event_t event,
-                                    const mosaico_module_mgr_info_t *info,
-                                    void *user_data)
+static void subboard_event_callback(const mosaico_module_mgr_event_t *event, void *user_data)
 {
     (void)user_data;
 
-    if (event == MOSAICO_MODULE_MGR_EVENT_REMOVED &&
-        info->eeprom.board_type == MOSAICO_BOARD_TYPE_BUTTON_LED) {
+    if ((event->changes & MOSAICO_MODULE_CHANGE_PRESENCE) &&
+        event->info.presence == MOSAICO_MODULE_PRESENCE_ABSENT &&
+        event->info.eeprom.board_type == MOSAICO_BOARD_TYPE_BUTTON_LED) {
         s_button_board_removed = true;
         ESP_LOGI(TAG, "Button sub-board removed from %s slot",
-                 mosaico_module_mgr_slot_to_name(info->slot));
+                 mosaico_module_mgr_slot_to_name(event->info.slot));
     }
 }
 
 static esp_err_t init_subboard_manager(void)
 {
-    const mosaico_module_mgr_config_t manager_config = {
-        .scan_period_ms = 1000,
-        .debounce_count = 3,
-    };
-    ESP_RETURN_ON_ERROR(mosaico_module_mgr_subscribe(subboard_event_callback, NULL), TAG, "subscribe module events failed");
-    const esp_err_t ret = mosaico_module_mgr_init(&manager_config);
+    const mosaico_module_mgr_config_t manager_config = MOSAICO_MODULE_MGR_DEFAULT_CONFIG();
+    ESP_RETURN_ON_ERROR(mosaico_module_mgr_init(&manager_config), TAG, "initialize module manager failed");
+    static mosaico_module_subscription_t subscription;
+    const esp_err_t ret = mosaico_module_mgr_subscribe(subboard_event_callback, NULL, &subscription);
     if (ret != ESP_OK) {
-        (void)mosaico_module_mgr_unsubscribe(subboard_event_callback);
-        ESP_LOGE(TAG, "Initialize module manager failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Subscribe module events failed: %s", esp_err_to_name(ret));
     }
     return ret;
 }

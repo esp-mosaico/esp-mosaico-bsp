@@ -25,6 +25,7 @@ static const char *TAG = "espnow_chat";
 #define APP_SESSION_ID    1U
 
 static uint32_t s_chat_seq;
+static bool s_led_available;
 
 static void peer_receive_cb(const uint8_t source_mac[6],
                             int8_t rssi,
@@ -53,7 +54,9 @@ static void peer_receive_cb(const uint8_t source_mac[6],
                  source_mac[0], source_mac[1], source_mac[2],
                  source_mac[3], source_mac[4], source_mac[5],
                  (int)rssi, text);
-        (void)bsp_led_set(true);
+        if (s_led_available) {
+            (void)bsp_led_set(true);
+        }
     } else if (message->type == MOSAICO_PEER_MSG_HELLO) {
         ESP_LOGI(TAG,
                  "HELLO from id=0x%llx rssi=%d",
@@ -95,9 +98,13 @@ static void button_event_cb(void *button_handle, void *user_data)
         return;
     }
     ESP_LOGI(TAG, "TX: %s", line);
-    (void)bsp_led_set(true);
+    if (s_led_available) {
+        (void)bsp_led_set(true);
+    }
     vTaskDelay(pdMS_TO_TICKS(40));
-    (void)bsp_led_set(false);
+    if (s_led_available) {
+        (void)bsp_led_set(false);
+    }
 }
 
 static esp_err_t setup_button(void)
@@ -116,7 +123,13 @@ static esp_err_t setup_button(void)
 void app_main(void)
 {
     ESP_LOGI(TAG, "ESP-NOW chat (no magnetic)");
-    ESP_ERROR_CHECK(bsp_led_init());
+    esp_err_t led_ret = bsp_led_init();
+    if (led_ret == ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGW(TAG, "Status LED unavailable; continuing without LED feedback");
+    } else {
+        ESP_ERROR_CHECK(led_ret);
+        s_led_available = true;
+    }
     ESP_ERROR_CHECK(setup_button());
 
     mosaico_peer_link_config_t config = MOSAICO_PEER_LINK_CONFIG_DEFAULT();

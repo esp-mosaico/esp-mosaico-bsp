@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: CC0-1.0
  */
 
-#include <string.h>
-
 #include "bsp/esp_mosaico.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -20,10 +18,9 @@ static const char *TAG = "module_slot_scan";
 #define SCAN_DEBOUNCE  3U
 
 typedef struct {
-    mosaico_module_mgr_event_t event;
+    mosaico_module_presence_t presence;
     mosaico_module_mgr_slot_t slot;
     mosaico_board_type_t type;
-    char name[32];
 } slot_event_t;
 
 static QueueHandle_t s_events;
@@ -35,37 +32,42 @@ static slot_pane_t *pane_for(mosaico_module_mgr_slot_t slot)
     return slot == MOSAICO_MODULE_MGR_SLOT_LEFT ? s_left : s_right;
 }
 
-static void on_module_event(mosaico_module_mgr_event_t event,
-                            const mosaico_module_mgr_info_t *info,
-                            void *user_data)
+static void enqueue_info(const mosaico_module_mgr_info_t *info)
 {
-    (void)user_data;
-    if (info == NULL || s_events == NULL) {
+    if (!info || !s_events || (info->presence == MOSAICO_MODULE_PRESENCE_PRESENT &&
+                              info->descriptor_state != MOSAICO_MODULE_DESCRIPTOR_VALID)) {
         return;
     }
-    if (event != MOSAICO_MODULE_MGR_EVENT_INSERTED &&
-            event != MOSAICO_MODULE_MGR_EVENT_REMOVED) {
+    if (info->presence != MOSAICO_MODULE_PRESENCE_PRESENT &&
+        info->presence != MOSAICO_MODULE_PRESENCE_ABSENT) {
         return;
     }
 
     slot_event_t msg = {
-        .event = event,
+        .presence = info->presence,
         .slot = info->slot,
         .type = (mosaico_board_type_t)info->eeprom.board_type,
     };
-    memcpy(msg.name, info->eeprom.board_name, sizeof(msg.name) - 1);
     ESP_LOGI(TAG, "%s %s type=%s addr=0x%02X",
-             event == MOSAICO_MODULE_MGR_EVENT_INSERTED ? "INSERTED" : "REMOVED",
+             info->presence == MOSAICO_MODULE_PRESENCE_PRESENT ? "PRESENT" : "ABSENT",
              mosaico_module_mgr_slot_to_name(info->slot),
              mosaico_module_mgr_type_to_name(msg.type),
              info->eeprom_addr);
     (void)xQueueSend(s_events, &msg, 0);
 }
 
+static void on_module_event(const mosaico_module_mgr_event_t *event, void *user_data)
+{
+    (void)user_data;
+    if (event && (event->changes & (MOSAICO_MODULE_CHANGE_PRESENCE | MOSAICO_MODULE_CHANGE_DESCRIPTOR))) {
+        enqueue_info(&event->info);
+    }
+}
+
 static void apply_event(const slot_event_t *msg)
 {
     slot_pane_t *pane = pane_for(msg->slot);
-    if (msg->event == MOSAICO_MODULE_MGR_EVENT_REMOVED) {
+    if (msg->presence == MOSAICO_MODULE_PRESENCE_ABSENT) {
         slot_pane_stop(pane);
         slot_pane_show_empty(pane);
         return;
@@ -118,10 +120,18 @@ void app_main(void)
 
     const mosaico_module_mgr_config_t config = {
         .scan_period_ms = SCAN_PERIOD_MS,
+        .descriptor_retry_ms = 2000,
         .debounce_count = SCAN_DEBOUNCE,
     };
-    ESP_ERROR_CHECK(mosaico_module_mgr_subscribe(on_module_event, NULL));
     ESP_ERROR_CHECK(mosaico_module_mgr_init(&config));
+    mosaico_module_subscription_t subscription = {0};
+    ESP_ERROR_CHECK(mosaico_module_mgr_subscribe(on_module_event, NULL, &subscription));
+    for (mosaico_module_mgr_slot_t slot = MOSAICO_MODULE_MGR_SLOT_LEFT;
+         slot < MOSAICO_MODULE_MGR_SLOT_COUNT; ++slot) {
+        mosaico_module_mgr_info_t info = {0};
+        ESP_ERROR_CHECK(mosaico_module_mgr_get_info(slot, &info));
+        enqueue_info(&info);
+    }
     ESP_LOGI(TAG, "Split view ready: left=0x50 right=0x51");
 
     ESP_ERROR_CHECK(xTaskCreate(ui_task, "slot_ui", 8192, NULL, 4, NULL) == pdPASS

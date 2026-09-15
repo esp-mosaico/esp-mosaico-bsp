@@ -126,7 +126,13 @@ static void log_psram_headroom(const char *checkpoint)
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "AI model gallery — press AI to cycle face/coco/idle");
-    ESP_ERROR_CHECK(bsp_led_init());
+    const esp_err_t led_ret = bsp_led_init();
+    if (led_ret == ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGW(TAG, "Status LED unavailable; continuing without LED feedback");
+    } else {
+        ESP_ERROR_CHECK(led_ret);
+    }
+    const bool led_available = led_ret == ESP_OK;
     ESP_ERROR_CHECK(setup_button());
 
     mosaico_camera_config_t config = MOSAICO_CAMERA_DEFAULT_CONFIG();
@@ -162,13 +168,19 @@ extern "C" void app_main(void)
         if (mode == Mode::Face) {
             face = new HumanFaceDetect(
                 static_cast<HumanFaceDetect::model_type_t>(CONFIG_DEFAULT_HUMAN_FACE_DETECT_MODEL), false);
-            (void)bsp_led_set(true);
+            if (led_available) {
+                (void)bsp_led_set(true);
+            }
         } else if (mode == Mode::Coco) {
             coco = new COCODetect(
                 static_cast<COCODetect::model_type_t>(CONFIG_DEFAULT_COCO_DETECT_MODEL), false);
-            (void)bsp_led_set(true);
+            if (led_available) {
+                (void)bsp_led_set(true);
+            }
         } else {
-            (void)bsp_led_set(false);
+            if (led_available) {
+                (void)bsp_led_set(false);
+            }
         }
 
         log_psram_headroom("after model");

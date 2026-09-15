@@ -56,7 +56,7 @@ static const bsp_subboard_gpio_pair_t s_gpio_pairs[] = {
     {GPIO_NUM_48, GPIO_NUM_47}, /* H4 */
     {GPIO_NUM_13, GPIO_NUM_11}, /* H6 */
     {GPIO_NUM_12, GPIO_NUM_10}, /* H8 */
-    {GPIO_NUM_14, GPIO_NUM_39}, /* H10 / EEPROM A0 */
+    {GPIO_NUM_14, GPIO_NUM_39}, /* H10 / standard module EEPROM A0 */
     {GPIO_NUM_4,  GPIO_NUM_5},  /* H12 */
     {GPIO_NUM_16, GPIO_NUM_40},
     {GPIO_NUM_15, GPIO_NUM_38},
@@ -100,7 +100,7 @@ static esp_err_t init_i2c_bus(void)
 
 static esp_err_t configure_address_select(const bsp_subboard_slot_config_t *slot)
 {
-    /* Camera D4 reuses GPIO14. Disconnect the old function before driving A0. */
+    /* Camera D4 reuses GPIO14; restore the standard module discovery function. */
     ESP_RETURN_ON_ERROR(gpio_reset_pin(slot->address_select_gpio), TAG,
                         "reset slot %d address GPIO failed", slot->slot);
     const gpio_config_t config = {

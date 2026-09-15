@@ -20,15 +20,15 @@ extern "C" {
  * Left/right expansion discrimination:
  *
  * Both slots use SDA=GPIO0 and SCL=GPIO1. This is shared with mainboard I2C0
- * on v1.0 and driven by dedicated I2C1 on v1.2. The mainboard drives each
- * slot's AT24C02 A0 pin to a fixed level so the two EEPROMs appear at different
- * 7-bit addresses:
+ * on v1.0 and driven by dedicated I2C1 on v1.2. Standard modules use the slot
+ * control GPIO as AT24C02 A0 so the two EEPROMs appear at different addresses:
  *
  *   left  : GPIO14 = 0 -> AT24C02 @ 0x50
  *   right : GPIO39 = 1 -> AT24C02 @ 0x51
  *
- * Applications discover boards by probing those addresses, then map connector
- * GPIOs with bsp_subboard_map_gpio() using the resolved slot.
+ * The camera EEPROM is internally fixed at 0x50 and has no address line;
+ * GPIO14 is camera D4. Applications discover boards by probing the configured
+ * addresses, then map connector GPIOs with bsp_subboard_map_gpio().
  */
 
 #define BSP_SUBBOARD_EEPROM_ADDR_LEFT     0x50U
@@ -56,8 +56,8 @@ typedef struct {
 /**
  * @brief Prepare the two Mosaico subboard slots for EEPROM discovery
  *
- * Enables the shared subboard rails and I2C bus, then drives the EEPROM
- * address-select pins so the left and right slots appear at 0x50 and 0x51.
+ * Enables the shared subboard rails and I2C bus, then applies the standard
+ * module discovery levels for the left and right slots.
  */
 esp_err_t bsp_subboard_init(void);
 
@@ -68,7 +68,7 @@ esp_err_t bsp_subboard_get_slot_config(bsp_subboard_slot_t slot,
                                        bsp_subboard_slot_config_t *out_config);
 
 /**
- * @brief Drive one slot's AT24C02 A0 pin to its discovery level
+ * @brief Restore one slot's control GPIO to its discovery level
  *
  * Call after a driver has temporarily reused the address-select GPIO.
  */

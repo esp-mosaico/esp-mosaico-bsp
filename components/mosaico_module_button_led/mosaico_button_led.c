@@ -29,6 +29,7 @@ typedef struct {
 struct mosaico_button_led_t {
     mosaico_button_led_config_t config;
     mosaico_module_mgr_slot_t slot;
+    mosaico_module_lease_t lease;
     button_led_hardware_t hardware;
     led_strip_handle_t strip;
     SemaphoreHandle_t lock;
@@ -104,10 +105,10 @@ static esp_err_t push_leds(mosaico_button_led_handle_t handle)
     return led_strip_refresh(handle->strip);
 }
 
-static void release_resources(mosaico_button_led_handle_t handle)
+static esp_err_t release_resources(mosaico_button_led_handle_t handle)
 {
     if (!handle) {
-        return;
+        return ESP_OK;
     }
 
     if (handle->strip) {
@@ -117,14 +118,17 @@ static void release_resources(mosaico_button_led_handle_t handle)
     }
 
     if (handle->subboard_claimed) {
-        esp_err_t ret = mosaico_module_mgr_release(handle->slot);
+        esp_err_t ret = mosaico_module_mgr_release(&handle->lease);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Release subboard slot %s failed: %s",
                      mosaico_module_mgr_slot_to_name(handle->slot),
                      esp_err_to_name(ret));
+            return ret;
         }
         handle->subboard_claimed = false;
+        handle->lease = (mosaico_module_lease_t) {0};
     }
+    return ESP_OK;
 }
 
 esp_err_t mosaico_button_led_new(const mosaico_button_led_config_t *config,
@@ -147,40 +151,12 @@ esp_err_t mosaico_button_led_new(const mosaico_button_led_config_t *config,
     ESP_RETURN_ON_ERROR(mosaico_module_mgr_init(NULL), TAG,
                         "initialize module manager failed");
 
-    mosaico_module_mgr_info_t module_info = {0};
-    esp_err_t ret = mosaico_module_mgr_wait_for(
-        MOSAICO_BOARD_TYPE_BUTTON_LED, active.slot,
-        active.discovery_timeout_ms, &module_info);
-    ESP_RETURN_ON_ERROR(ret, TAG, "discover button LED subboard failed");
-
     mosaico_button_led_handle_t handle =
         heap_caps_calloc(1, sizeof(*handle),
                          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     ESP_RETURN_ON_FALSE(handle, ESP_ERR_NO_MEM, TAG,
                         "allocate button LED context failed");
     handle->config = active;
-    handle->slot = module_info.slot;
-    /*
-     * Prefer the probed AT24C02 address as the slot identity, then map pins
-     * from that slot (0x50 left / 0x51 right).
-     */
-    if (module_info.eeprom_addr != 0) {
-        bsp_subboard_slot_t addr_slot = BSP_SUBBOARD_SLOT_LEFT;
-        ret = bsp_subboard_slot_from_eeprom_addr(module_info.eeprom_addr, &addr_slot);
-        if (ret != ESP_OK) {
-            heap_caps_free(handle);
-            ESP_LOGE(TAG, "Map EEPROM 0x%02X to slot failed: %s",
-                     module_info.eeprom_addr, esp_err_to_name(ret));
-            return ret;
-        }
-        if ((mosaico_module_mgr_slot_t)addr_slot != module_info.slot) {
-            ESP_LOGW(TAG,
-                     "Slot/address mismatch: slot=%s eeprom=0x%02X mapped=%d; using address",
-                     mosaico_module_mgr_slot_to_name(module_info.slot),
-                     module_info.eeprom_addr, addr_slot);
-        }
-        handle->slot = (mosaico_module_mgr_slot_t)addr_slot;
-    }
 
     handle->lock = xSemaphoreCreateMutex();
     if (!handle->lock) {
@@ -190,12 +166,21 @@ esp_err_t mosaico_button_led_new(const mosaico_button_led_config_t *config,
         return ESP_ERR_NO_MEM;
     }
 
-    ret = mosaico_module_mgr_claim(handle->slot, MOSAICO_BOARD_TYPE_BUTTON_LED);
+    const mosaico_module_mgr_claim_config_t claim_config = {
+        .expected_type = MOSAICO_BOARD_TYPE_BUTTON_LED,
+        .slot = active.slot,
+        .timeout_ms = active.discovery_timeout_ms,
+    };
+    esp_err_t ret = mosaico_module_mgr_claim(&claim_config, &handle->lease);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Claim button LED subboard failed: %s",
-                 esp_err_to_name(ret));
+        if (ret == ESP_ERR_TIMEOUT || ret == ESP_ERR_NOT_FOUND) {
+            ESP_LOGD(TAG, "Button LED subboard not available: %s", esp_err_to_name(ret));
+        } else {
+            ESP_LOGE(TAG, "Claim button LED subboard failed: %s", esp_err_to_name(ret));
+        }
         goto fail;
     }
+    handle->slot = handle->lease.slot;
     handle->subboard_claimed = true;
 
     ret = get_hardware_config((bsp_subboard_slot_t)handle->slot, &handle->hardware);
@@ -232,7 +217,10 @@ esp_err_t mosaico_button_led_new(const mosaico_button_led_config_t *config,
     return ESP_OK;
 
 fail:
-    release_resources(handle);
+    if (release_resources(handle) != ESP_OK) {
+        *out_handle = handle;
+        return ret;
+    }
     vSemaphoreDelete(handle->lock);
     heap_caps_free(handle);
     return ret;
@@ -359,7 +347,11 @@ esp_err_t mosaico_button_led_del(mosaico_button_led_handle_t handle)
     }
 
     const mosaico_module_mgr_slot_t slot = handle->slot;
-    release_resources(handle);
+    esp_err_t ret = release_resources(handle);
+    if (ret != ESP_OK) {
+        xSemaphoreGive(handle->lock);
+        return ret;
+    }
     xSemaphoreGive(handle->lock);
     vSemaphoreDelete(handle->lock);
     heap_caps_free(handle);

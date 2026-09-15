@@ -27,6 +27,11 @@ void app_main(void)
              usb_width, usb_height, BSP_LCD_H_RES, BSP_LCD_V_RES);
     ESP_ERROR_CHECK(app_usb_init());
 #if CONFIG_HID_TOUCH_ENABLE
-    ESP_ERROR_CHECK(app_touch_init());
+    esp_err_t touch_ret = app_touch_init();
+    if (touch_ret == ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGW(TAG, "Touch unavailable; continuing without HID touch input");
+    } else {
+        ESP_ERROR_CHECK(touch_ret);
+    }
 #endif
 }
