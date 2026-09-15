@@ -81,7 +81,6 @@ static esp_err_t camera_wait_and_open(void)
 {
     mosaico_camera_config_t config = MOSAICO_CAMERA_DEFAULT_CONFIG();
     config.pixel_format = MOSAICO_CAMERA_PIXEL_FORMAT_JPEG;
-    config.buffer_count = 2;
     config.allow_unidentified = true;
     while (true) {
         esp_err_t ret = mosaico_camera_new(&config, &s_app.camera);

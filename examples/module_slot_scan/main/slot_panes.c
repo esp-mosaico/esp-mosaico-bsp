@@ -26,7 +26,6 @@ static const char *TAG = "slot_panes";
 
 #define CAM_VIEW_W           240
 #define CAM_VIEW_H           240
-#define CAM_CROP             640
 #define CAM_BUFFER_ALIGN     128
 #define COLOR_BG             lv_color_hex(0x070a12)
 #define COLOR_PANEL          lv_color_hex(0x151b2b)
@@ -153,11 +152,11 @@ static esp_err_t camera_convert(slot_pane_t *pane, const mosaico_camera_frame_t 
     ESP_RETURN_ON_FALSE(frame && frame->data, ESP_ERR_INVALID_ARG, TAG, "invalid camera frame");
     ESP_RETURN_ON_FALSE(frame->pixel_format == V4L2_PIX_FMT_UYVY, ESP_ERR_NOT_SUPPORTED, TAG,
                         "unsupported camera format");
-    ESP_RETURN_ON_FALSE(frame->width >= CAM_CROP && frame->height >= CAM_CROP, ESP_ERR_INVALID_SIZE, TAG,
-                        "camera frame is smaller than crop");
-
-    const uint32_t bytes_per_line =
-        frame->bytes_per_line ? frame->bytes_per_line : frame->width * 2U;
+    const uint32_t crop_size = align_down_even(frame->width < frame->height ? frame->width : frame->height);
+    ESP_RETURN_ON_FALSE(crop_size > 0, ESP_ERR_INVALID_SIZE, TAG, "invalid camera frame size: %" PRIu32 "x%" PRIu32,
+                        frame->width, frame->height);
+    const uint32_t bytes_per_line = frame->bytes_per_line ? frame->bytes_per_line : frame->width * 2U;
+    ESP_RETURN_ON_FALSE((bytes_per_line % 2U) == 0, ESP_ERR_INVALID_SIZE, TAG, "camera stride is not pixel aligned");
     ESP_RETURN_ON_ERROR(
         esp_cache_msync((void *)frame->data, frame->size,
                         ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE),
@@ -171,10 +170,10 @@ static esp_err_t camera_convert(slot_pane_t *pane, const mosaico_camera_frame_t 
             .buffer = (void *)frame->data,
             .pic_w = bytes_per_line / 2U,
             .pic_h = frame->height,
-            .block_w = CAM_CROP,
-            .block_h = CAM_CROP,
-            .block_offset_x = align_down_even((frame->width - CAM_CROP) / 2U),
-            .block_offset_y = align_down_even((frame->height - CAM_CROP) / 2U),
+            .block_w = crop_size,
+            .block_h = crop_size,
+            .block_offset_x = align_down_even((frame->width - crop_size) / 2U),
+            .block_offset_y = align_down_even((frame->height - crop_size) / 2U),
             .srm_cm = PPA_SRM_COLOR_MODE_YUV422_UYVY,
             .yuv_range = PPA_COLOR_RANGE_LIMIT,
             .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,
@@ -187,8 +186,8 @@ static esp_err_t camera_convert(slot_pane_t *pane, const mosaico_camera_frame_t 
             .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
         },
         .rotation_angle = PPA_SRM_ROTATION_ANGLE_270,
-        .scale_x = (float)CAM_VIEW_W / (float)CAM_CROP,
-        .scale_y = (float)CAM_VIEW_H / (float)CAM_CROP,
+        .scale_x = (float)CAM_VIEW_W / (float)crop_size,
+        .scale_y = (float)CAM_VIEW_H / (float)crop_size,
         .mirror_y = true,
         .mode = PPA_TRANS_MODE_BLOCKING,
     };
@@ -230,8 +229,6 @@ esp_err_t slot_pane_start_camera(slot_pane_t *pane)
 
     mosaico_camera_config_t config = MOSAICO_CAMERA_DEFAULT_CONFIG();
     config.slot = MOSAICO_MODULE_MGR_SLOT_LEFT;
-    config.width = 0;
-    config.height = 0;
     config.buffer_count = 1;
     ESP_RETURN_ON_ERROR(mosaico_camera_new(&config, &pane->camera), TAG, "create camera failed");
     esp_err_t ret = mosaico_camera_open(pane->camera);

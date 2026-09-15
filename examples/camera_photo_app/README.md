@@ -6,7 +6,7 @@
 
 | 类别 | 说明 |
 |------|------|
-| 实时预览 | 480×480 全屏预览，PPA 裁剪/缩放 OV3640 1024×768 YUV422 画面 |
+| 实时预览 | 480×480 全屏预览，PPA 根据相机实际分辨率动态居中裁剪/缩放 YUV422 画面 |
 | 拍照存储 | JPEG（质量 80，单张最大 256 KB）写入 SPI NAND，文件名 `0001.jpg`、`0002.jpg` … |
 | 相册 | 全屏浏览、左右滑动切换、显示 `文件名(大小KB)`、删除确认 |
 | 闪光灯 | 板载闪光灯 GPIO34；开启后拍照前后各亮 200 ms，曝光临时 ×1.5 |
@@ -67,7 +67,7 @@ idf.py -p PORT monitor
 
 > 首次使用 USB 导出或修改过分区表时，请执行完整 `flash`（含 `partition_table`）。
 
-默认配置见 `sdkconfig.defaults`：PSRAM Oct 250 MHz、OV3640 1024×768@25fps、**USB U 盘默认关闭**（`SINGLE_APP_LARGE` 分区表）。
+默认配置见 `sdkconfig.defaults`：PSRAM Oct 250 MHz、相机分辨率跟随传感器 Kconfig 默认格式、**USB U 盘默认关闭**（`SINGLE_APP_LARGE` 分区表）。
 
 > **注意**：`sdkconfig.defaults` 只在**首次生成**或**删除 `sdkconfig` 后**生效。若你之前已编译过并启用过 USB，本地 `sdkconfig` 会保留旧选项，需按下方「关闭 USB U 盘」操作后再烧录。
 

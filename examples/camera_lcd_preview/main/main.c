@@ -24,9 +24,6 @@
 
 #define PREVIEW_WIDTH              BSP_LCD_H_RES
 #define PREVIEW_HEIGHT             BSP_LCD_V_RES
-#define PREVIEW_CROP_WIDTH         640
-#define PREVIEW_CROP_HEIGHT        640
-#define PREVIEW_SCALE              0.75f
 #define PREVIEW_BUFFER_ALIGNMENT   128
 #define CAPTURE_FAILURE_LIMIT      3
 #define LCD_TRANSFER_WARN_MS       100
@@ -137,8 +134,6 @@ static esp_err_t camera_wait_and_open(void)
     mosaico_camera_config_t config = MOSAICO_CAMERA_DEFAULT_CONFIG();
     /* Bring-up boards ship with an unprogrammed subboard EEPROM. */
     config.allow_unidentified = true;
-    config.width = 0;
-    config.height = 0;
 
     while (true) {
         esp_err_t ret = mosaico_camera_new(&config, &s_preview.camera);
@@ -173,18 +168,11 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
         frame->pixel_format == V4L2_PIX_FMT_UYVY,
         ESP_ERR_NOT_SUPPORTED, TAG,
         "unsupported camera format 0x%08" PRIx32, frame->pixel_format);
-    ESP_RETURN_ON_FALSE(
-        frame->width >= PREVIEW_CROP_WIDTH && frame->height >= PREVIEW_CROP_HEIGHT,
-        ESP_ERR_INVALID_SIZE, TAG,
-        "camera frame %" PRIu32 "x%" PRIu32
-        " is smaller than the %dx%d crop",
-        frame->width, frame->height, PREVIEW_CROP_WIDTH, PREVIEW_CROP_HEIGHT);
-
-    const uint32_t bytes_per_line =
-        frame->bytes_per_line ? frame->bytes_per_line : frame->width * 2U;
-    ESP_RETURN_ON_FALSE(
-        (bytes_per_line % 2U) == 0,
-        ESP_ERR_INVALID_SIZE, TAG, "camera stride is not pixel aligned");
+    const uint32_t crop_size = align_down_even(frame->width < frame->height ? frame->width : frame->height);
+    ESP_RETURN_ON_FALSE(crop_size > 0, ESP_ERR_INVALID_SIZE, TAG, "invalid camera frame size: %" PRIu32 "x%" PRIu32,
+                        frame->width, frame->height);
+    const uint32_t bytes_per_line = frame->bytes_per_line ? frame->bytes_per_line : frame->width * 2U;
+    ESP_RETURN_ON_FALSE((bytes_per_line % 2U) == 0, ESP_ERR_INVALID_SIZE, TAG, "camera stride is not pixel aligned");
 
     ESP_RETURN_ON_ERROR(
         esp_cache_msync(
@@ -203,12 +191,10 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
             .buffer = frame->data,
             .pic_w = bytes_per_line / 2U,
             .pic_h = frame->height,
-            .block_w = PREVIEW_CROP_WIDTH,
-            .block_h = PREVIEW_CROP_HEIGHT,
-            .block_offset_x =
-                align_down_even((frame->width - PREVIEW_CROP_WIDTH) / 2U),
-            .block_offset_y =
-                align_down_even((frame->height - PREVIEW_CROP_HEIGHT) / 2U),
+            .block_w = crop_size,
+            .block_h = crop_size,
+            .block_offset_x = align_down_even((frame->width - crop_size) / 2U),
+            .block_offset_y = align_down_even((frame->height - crop_size) / 2U),
             .srm_cm = PPA_SRM_COLOR_MODE_YUV422_UYVY,
             .yuv_range = PPA_COLOR_RANGE_LIMIT,
             .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,
@@ -221,8 +207,8 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
             .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
         },
         .rotation_angle = PPA_SRM_ROTATION_ANGLE_270,
-        .scale_x = PREVIEW_SCALE,
-        .scale_y = PREVIEW_SCALE,
+        .scale_x = (float)PREVIEW_WIDTH / (float)crop_size,
+        .scale_y = (float)PREVIEW_HEIGHT / (float)crop_size,
         .mirror_y = true,
         .mode = PPA_TRANS_MODE_BLOCKING,
     };

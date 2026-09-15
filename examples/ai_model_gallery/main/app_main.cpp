@@ -92,18 +92,27 @@ static void open_capture(const mosaico_camera_config_t *config,
                          mosaico_camera_handle_t *camera,
                          mosaico_camera_jpeg_decoder_handle_t *decoder)
 {
-    ESP_ERROR_CHECK(mosaico_camera_jpeg_decoder_new(
-        config->width, config->height, decoder));
     while (true) {
         esp_err_t ret = mosaico_camera_new(config, camera);
         if (ret == ESP_OK) {
             ret = mosaico_camera_open(*camera);
         }
         if (ret == ESP_OK) {
+            mosaico_camera_info_t info = {};
+            ret = mosaico_camera_get_info(*camera, &info);
+            if (ret == ESP_OK) {
+                ret = mosaico_camera_jpeg_decoder_new(info.width, info.height, decoder);
+            }
+        }
+        if (ret == ESP_OK) {
             ret = mosaico_camera_start_stream(*camera);
         }
         if (ret == ESP_OK) {
             return;
+        }
+        if (*decoder) {
+            ESP_ERROR_CHECK(mosaico_camera_jpeg_decoder_del(*decoder));
+            *decoder = NULL;
         }
         if (*camera) {
             ESP_ERROR_CHECK(mosaico_camera_del(*camera));
@@ -137,7 +146,6 @@ extern "C" void app_main(void)
 
     mosaico_camera_config_t config = MOSAICO_CAMERA_DEFAULT_CONFIG();
     config.pixel_format = MOSAICO_CAMERA_PIXEL_FORMAT_JPEG;
-    config.buffer_count = 2;
     config.allow_unidentified = true;
 
     mosaico_camera_jpeg_decoder_handle_t decoder = NULL;
