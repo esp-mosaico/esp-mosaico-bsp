@@ -13,6 +13,8 @@
 #include "esp_lcd_touch_cst9220.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
+#include "soc/lp_system_reg.h"
+#include "soc/soc.h"
 
 static const char *TAG = "S31-Mosaico-LCD";
 #if CONFIG_BSP_CO5300_ENABLE_TE
@@ -33,6 +35,9 @@ static bool s_display_paused;
 static bool s_display_sleeping;
 static bool s_display_deep_standby;
 
+#define MOSAICO_BOOT_LCD_HANDOFF_REG   LP_SYSTEM_REG_LP_STORE15_REG
+#define MOSAICO_BOOT_LCD_HANDOFF_MAGIC UINT32_C(0x4D4C4344) /* "MLCD" */
+
 static const co5300_lcd_init_cmd_t s_vendor_init[] = {
     {0x11, NULL, 0, 600},
     {0xFE, (uint8_t[]){0x20}, 1, 0},
@@ -51,6 +56,33 @@ static const co5300_lcd_init_cmd_t s_vendor_init[] = {
     {0x2B, (uint8_t[]){0x00, 0x00, 0x01, 0xDF}, 4, 0},
     {0x29, NULL, 0, 600},
 };
+
+/* The retained bootloader already reset the CO5300, sent Sleep Out, painted
+ * GRAM, and issued Display On. Reapply only idempotent controller state while
+ * keeping its visible frame and brightness untouched. */
+static const co5300_lcd_init_cmd_t s_handoff_init[] = {
+    {0xFE, (uint8_t[]){0x20}, 1, 0},
+    {0x19, (uint8_t[]){0x10}, 1, 0},
+    {0x1C, (uint8_t[]){0xA0}, 1, 0},
+    {0xFE, (uint8_t[]){0x00}, 1, 0},
+    {0xC4, (uint8_t[]){0x80}, 1, 0},
+    {0x3A, (uint8_t[]){0x55}, 1, 0},
+#if CONFIG_BSP_CO5300_ENABLE_TE
+    {0x35, (uint8_t[]){0x00}, 1, 0},
+#endif
+    {0x53, (uint8_t[]){0x20}, 1, 0},
+    {0x63, (uint8_t[]){0xFF}, 1, 0},
+    {0x2A, (uint8_t[]){0x00, 0x00, 0x01, 0xDF}, 4, 0},
+    {0x2B, (uint8_t[]){0x00, 0x00, 0x01, 0xDF}, 4, 0},
+};
+
+static bool consume_bootloader_handoff(void)
+{
+    const bool ready =
+        REG_READ(MOSAICO_BOOT_LCD_HANDOFF_REG) == MOSAICO_BOOT_LCD_HANDOFF_MAGIC;
+    REG_WRITE(MOSAICO_BOOT_LCD_HANDOFF_REG, 0);
+    return ready;
+}
 
 /*
  * Orientation is tracked as the 2x2 matrix mapping logical axes onto panel axes, so that a
@@ -208,6 +240,7 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
     ESP_RETURN_ON_FALSE(rotation_is_valid(active.rotation), ESP_ERR_INVALID_ARG, TAG,
                         "unsupported rotation %d", (int)active.rotation);
     ESP_RETURN_ON_ERROR(bsp_power_set_vcc_3v3(true), TAG, "enable VCC_3V3 rail failed");
+    const bool bootloader_panel_ready = consume_bootloader_handoff();
     bsp_board_variant_t variant;
     ESP_RETURN_ON_ERROR(bsp_board_variant_get(&variant), TAG, "get board variant failed");
     const bool v1_0 = variant == BSP_BOARD_VARIANT_V1_0;
@@ -236,8 +269,10 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
         return ret;
     }
     const co5300_vendor_config_t vendor_config = {
-        .init_cmds = s_vendor_init,
-        .init_cmds_size = sizeof(s_vendor_init) / sizeof(s_vendor_init[0]),
+        .init_cmds = bootloader_panel_ready ? s_handoff_init : s_vendor_init,
+        .init_cmds_size = bootloader_panel_ready
+                              ? sizeof(s_handoff_init) / sizeof(s_handoff_init[0])
+                              : sizeof(s_vendor_init) / sizeof(s_vendor_init[0]),
         .flags.use_qspi_interface = true,
     };
     const esp_lcd_panel_dev_config_t panel_config = {
@@ -254,12 +289,18 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
         s_spi_bus_initialized = false;
         return ret;
     }
-    ESP_GOTO_ON_ERROR(esp_lcd_panel_reset(s_panel), fail, TAG, "reset CO5300 failed");
+    if (!bootloader_panel_ready) {
+        ESP_GOTO_ON_ERROR(esp_lcd_panel_reset(s_panel), fail, TAG, "reset CO5300 failed");
+    }
     ESP_GOTO_ON_ERROR(esp_lcd_panel_init(s_panel), fail, TAG, "initialize CO5300 failed");
     ESP_GOTO_ON_ERROR(esp_lcd_panel_set_gap(s_panel, BSP_LCD_X_GAP, BSP_LCD_Y_GAP),
                       fail, TAG, "set CO5300 gap failed");
     ESP_GOTO_ON_ERROR(apply_panel_orientation(active.rotation), fail, TAG, "set CO5300 orientation failed");
-    ESP_GOTO_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, true), fail, TAG, "turn on CO5300 failed");
+    if (!bootloader_panel_ready) {
+        ESP_GOTO_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, true), fail, TAG, "turn on CO5300 failed");
+    } else {
+        ESP_LOGI(TAG, "retained bootloader splash during application handoff");
+    }
     s_config = active;
     s_config_valid = true;
     *ret_panel = s_panel;
