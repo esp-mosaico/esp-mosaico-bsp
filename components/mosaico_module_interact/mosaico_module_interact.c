@@ -30,6 +30,9 @@ static const char *TAG = "mosaico_interact";
 #define IR_RMT_RESOLUTION_HZ        1000000
 #define IR_NEC_SYMBOL_MAX           34
 #define LDR_ADC_MAX                 ((1U << SOC_ADC_DIGI_MAX_BITWIDTH) - 1U)
+#define TOUCH_DELTA_DIVISOR         20U
+#define TOUCH_DELTA_OFFSET          300U
+#define TOUCH_ACTIVE_THRESH_RATIO   0.03f
 #if CONFIG_IDF_TARGET_ESP32S31
 // Nominal single-ended endpoints from IDF's S31 ADC tests, not voltage calibration.
 #define LDR_S31_ZERO_CODE           2196
@@ -296,7 +299,7 @@ static void capture_touch_idle(touch_channel_handle_t chan, uint32_t *idle)
 static bool touch_delta_over(const uint32_t *high, const uint32_t *low)
 {
     for (int i = 0; i < TOUCH_SAMPLE_CFG_NUM; ++i) {
-        const uint32_t thresh = low[i] / 40U + 150U;
+        const uint32_t thresh = low[i] / TOUCH_DELTA_DIVISOR + TOUCH_DELTA_OFFSET;
         if (high[i] > low[i] + thresh) {
             return true;
         }
@@ -347,7 +350,7 @@ static esp_err_t start_touch(mosaico_interact_handle_t handle)
         TOUCH_SENSOR_V2_DEFAULT_SAMPLE_CONFIG(500, TOUCH_VOLT_LIM_L_0V5, TOUCH_VOLT_LIM_H_2V2),
     };
     touch_channel_config_t chan_cfg = {
-        .active_thresh = {2000},
+        .active_thresh = {4000},
         .charge_speed = TOUCH_CHARGE_SPEED_7,
         .init_charge_volt = TOUCH_INIT_CHARGE_VOLT_DEFAULT,
     };
@@ -358,7 +361,7 @@ static esp_err_t start_touch(mosaico_interact_handle_t handle)
         TOUCH_SENSOR_V3_DEFAULT_SAMPLE_CONFIG2(3, 10, 31, 7),
     };
     touch_channel_config_t chan_cfg = {
-        .active_thresh = {1000, 2500, 5000},
+        .active_thresh = {2000, 5000, 10000},
     };
 #endif
 
@@ -423,7 +426,6 @@ static esp_err_t start_touch(mosaico_interact_handle_t handle)
 
 #if SOC_TOUCH_SUPPORT_BENCHMARK
     uint32_t benchmark[TOUCH_SAMPLE_CFG_NUM] = {0};
-    const float ratio = 0.015f;
     touch_channel_handle_t chans[] = {handle->touch_l, handle->touch_r};
     for (size_t i = 0; i < 2; ++i) {
         ret = touch_channel_read_data(chans[i], TOUCH_CHAN_DATA_TYPE_BENCHMARK,
@@ -434,7 +436,7 @@ static esp_err_t start_touch(mosaico_interact_handle_t handle)
         }
         touch_channel_config_t tuned = chan_cfg;
         for (int j = 0; j < TOUCH_SAMPLE_CFG_NUM; ++j) {
-            tuned.active_thresh[j] = (uint32_t)(benchmark[j] * ratio);
+            tuned.active_thresh[j] = (uint32_t)(benchmark[j] * TOUCH_ACTIVE_THRESH_RATIO);
         }
         ret = touch_sensor_reconfig_channel(chans[i], &tuned);
         if (ret != ESP_OK) {
