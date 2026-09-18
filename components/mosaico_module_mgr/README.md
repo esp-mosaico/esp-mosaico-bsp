@@ -49,7 +49,7 @@ ESP_ERROR_CHECK(mosaico_module_mgr_subscribe(on_module_event, NULL, &subscriptio
 
 ```c
 const mosaico_module_mgr_claim_config_t claim = {
-    .expected_type = MOSAICO_BOARD_TYPE_BUTTON_LED,
+    .expected_type = MOSAICO_BOARD_TYPE_INTERACT,
     .slot = MOSAICO_MODULE_MGR_SLOT_AUTO,
     .timeout_ms = 3000,
 };

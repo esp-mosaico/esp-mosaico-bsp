@@ -107,7 +107,6 @@ Run `idf.py menuconfig` and open `ESP-Mosaico BSP` to configure the board-specif
 | Component | Description | Slot support |
 | --- | --- | --- |
 | [`mosaico_module_camera`](components/mosaico_module_camera) | Managed OV3640/SC101IOT DVP camera with optional hardware JPEG decoding helpers | Left only |
-| [`mosaico_module_button_led`](components/mosaico_module_button_led) | Two-button and three-WS2812 expansion module | Left or right |
 | [`mosaico_module_joystick`](components/mosaico_module_joystick) | Dual-axis joystick with five buttons and non-blocking calibration | Left or right |
 | [`mosaico_module_interact`](components/mosaico_module_interact) | Touch/button, motion, light, WS2812, and infrared interaction module | Left or right |
 

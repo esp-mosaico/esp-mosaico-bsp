@@ -289,8 +289,6 @@ const char *mosaico_module_mgr_type_to_name(mosaico_board_type_t type)
         return "Thermal Camera";
     case MOSAICO_BOARD_TYPE_RELAY:
         return "Relay";
-    case MOSAICO_BOARD_TYPE_BUTTON_LED:
-        return "Button LED";
     case MOSAICO_BOARD_TYPE_INTERACT:
         return "Interaction";
     case MOSAICO_BOARD_TYPE_CORE:

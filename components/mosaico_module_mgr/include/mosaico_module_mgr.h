@@ -54,7 +54,6 @@ typedef enum {
     MOSAICO_BOARD_TYPE_MATRIX_LED  = 0x11, /*!< Matrix LED board. */
     MOSAICO_BOARD_TYPE_THERMAL     = 0x12, /*!< Thermal imaging board. */
     MOSAICO_BOARD_TYPE_RELAY       = 0x13, /*!< Relay board. */
-    MOSAICO_BOARD_TYPE_BUTTON_LED  = 0x14, /*!< Button LED board. */
     MOSAICO_BOARD_TYPE_INTERACT    = 0x16, /*!< Interaction board. */
 } mosaico_board_type_t;
 
