@@ -13,7 +13,6 @@
 | 镜头翻转 | 底部翻转按钮，预览镜像 + 左上角 `Front` / `Rear` 标签，状态写入 NVS |
 | 摄像头开关 | 长按主板顶部按键（GPIO7）进入 PWDN 休眠/唤醒，关时黑屏 + 英文提示 |
 | USB U 盘（可选） | `CONFIG_CAMERA_PHOTO_USB_MSC`，默认关；开启后 HS OTG 导出 `DCIM/` |
-| 子板按键 | 右槽 Button LED 子板（可选）：KEY2 拍照、KEY1 切换闪光灯 |
 
 ## 硬件要求
 
@@ -21,10 +20,6 @@
 
 - **ESP-Mosaico** 主板（16 MB Flash、PSRAM、CO5300 480×480 屏）
 - **Camera 子板**（OV3640）插入 **左槽**（EEPROM `0x50`）
-
-### 可选
-
-- **Button LED 子板** 插入 **右槽**（EEPROM `0x51`），提供物理拍照/闪光灯按键
 
 ### 接口与约束
 
@@ -53,7 +48,7 @@ examples/camera_photo_app/
     └── ui_icons.c/h        # UI 图标资源
 ```
 
-依赖 `esp-mosaico-bsp`、`mosaico_module_camera`、`mosaico_module_mgr`、`mosaico_module_button_led`、`esp_new_jpeg`、`esp_tinyusb` 等组件。
+依赖 `esp-mosaico-bsp`、`mosaico_module_camera`、`mosaico_module_mgr`、`esp_new_jpeg`、`esp_tinyusb` 等组件。
 
 ## 编译与烧录
 
@@ -107,17 +102,6 @@ idf.py -p PORT monitor
 - **再次打开**：再次长按顶部按键，预览恢复
 
 传感器通过 PWDN（GPIO48）进入休眠，停止取流但不卸载子板。
-
-## Button LED 子板（可选）
-
-右槽插入 Button LED 子板后，串口会打印 `Button sub-board ready … KEY1=flash, KEY2=capture`：
-
-| 子板按键 | 功能 |
-|----------|------|
-| KEY2 | 拍照（等同触摸快门） |
-| KEY1 | 切换闪光灯开/关 |
-
-未插入子板时，仅触摸 UI 与顶部按键可用；串口可能周期性打印子板发现失败，属正常现象。
 
 ## 相册模式
 
@@ -228,9 +212,6 @@ idf.py -p ROM_PORT flash
 
 **关摄像头后仍看到最后一帧**
 请烧录包含最新 UI 修复的固件；关摄像头时应显示黑屏与英文提示。
-
-**右槽无 Button LED 子板**
-不影响主功能；触摸 UI 与 GPIO7 长按仍可用。
 
 ## 参考
 

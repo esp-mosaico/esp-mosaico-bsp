@@ -25,9 +25,7 @@
 #include "esp_jpeg_dec.h"
 #include "esp_jpeg_enc.h"
 #include "linux/videodev2.h"
-#include "mosaico_module_button_led.h"
 #include "mosaico_module_camera.h"
-#include "mosaico_module_mgr.h"
 #include "photo_store.h"
 #include "photo_usb_msc.h"
 
@@ -40,7 +38,6 @@
 #define FLASH_PIPELINE_FLUSH_FRAMES  1
 #define JPEG_QUALITY               80
 #define MAX_JPEG_SIZE              (256 * 1024)
-#define BUTTON_SUBBOARD_POLL_MS    50
 #define PREVIEW_HEARTBEAT_MS       5000
 #define PREVIEW_SLOW_GET_FRAME_MS  200
 #define PREVIEW_SLOW_CONVERT_MS    80
@@ -69,7 +66,6 @@ typedef struct {
 } app_context_t;
 
 static app_context_t s_app;
-static volatile bool s_button_board_removed;
 static volatile bool s_capture_pending;
 static volatile bool s_gallery_load_pending;
 static volatile uint32_t s_gallery_load_index;
@@ -259,12 +255,6 @@ static void app_set_flash_enabled(bool enabled)
     }
 }
 
-static void app_toggle_flash(void)
-{
-    app_set_flash_enabled(!s_app.flash_enabled);
-    ESP_LOGI(TAG, "Flash %s", s_app.flash_enabled ? "enabled" : "disabled");
-}
-
 static void show_camera_preview_blank(void)
 {
     memset(s_app.ppa_buffer, 0, s_app.buffer_size);
@@ -331,93 +321,6 @@ static esp_err_t init_top_button(void)
     ESP_LOGI(TAG, "Top button ready on GPIO%d (long press toggles camera)",
              BSP_BUTTON_AI_GPIO);
     return ESP_OK;
-}
-
-static void subboard_event_callback(const mosaico_module_mgr_event_t *event, void *user_data)
-{
-    (void)user_data;
-
-    if ((event->changes & MOSAICO_MODULE_CHANGE_PRESENCE) &&
-        event->info.presence == MOSAICO_MODULE_PRESENCE_ABSENT &&
-        event->info.eeprom.board_type == MOSAICO_BOARD_TYPE_BUTTON_LED) {
-        s_button_board_removed = true;
-        ESP_LOGI(TAG, "Button sub-board removed from %s slot",
-                 mosaico_module_mgr_slot_to_name(event->info.slot));
-    }
-}
-
-static esp_err_t init_subboard_manager(void)
-{
-    const mosaico_module_mgr_config_t manager_config = MOSAICO_MODULE_MGR_DEFAULT_CONFIG();
-    ESP_RETURN_ON_ERROR(mosaico_module_mgr_init(&manager_config), TAG, "initialize module manager failed");
-    static mosaico_module_subscription_t subscription;
-    const esp_err_t ret = mosaico_module_mgr_subscribe(subboard_event_callback, NULL, &subscription);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Subscribe module events failed: %s", esp_err_to_name(ret));
-    }
-    return ret;
-}
-
-static void button_subboard_task(void *arg)
-{
-    (void)arg;
-
-    while (true) {
-        mosaico_button_led_handle_t board = NULL;
-        const esp_err_t open_ret = mosaico_button_led_new(NULL, &board);
-        if (open_ret != ESP_OK) {
-            vTaskDelay(pdMS_TO_TICKS(500));
-            continue;
-        }
-
-        mosaico_button_led_info_t info = {0};
-        if (mosaico_button_led_get_info(board, &info) == ESP_OK) {
-            ESP_LOGI(TAG,
-                     "Button sub-board ready in %s slot (KEY1=flash, KEY2=capture)",
-                     mosaico_module_mgr_slot_to_name(info.slot));
-        }
-
-        bool last_key1 = false;
-        bool last_key2 = false;
-        s_button_board_removed = false;
-
-        while (!s_button_board_removed) {
-            bool key1 = false;
-            bool key2 = false;
-            const esp_err_t read_ret =
-                mosaico_button_led_read_keys(board, &key1, &key2);
-            if (read_ret != ESP_OK) {
-                ESP_LOGW(TAG, "Read button sub-board keys failed: %s",
-                         esp_err_to_name(read_ret));
-                break;
-            }
-
-            if (key2 && !last_key2 && s_app.mode == APP_MODE_CAMERA) {
-                request_capture();
-            }
-
-            if (key1 && !last_key1) {
-                app_toggle_flash();
-            }
-
-            last_key1 = key1;
-            last_key2 = key2;
-            vTaskDelay(pdMS_TO_TICKS(BUTTON_SUBBOARD_POLL_MS));
-        }
-
-        const esp_err_t close_ret = mosaico_button_led_del(board);
-        if (close_ret != ESP_OK) {
-            ESP_LOGW(TAG, "Close button sub-board failed: %s",
-                     esp_err_to_name(close_ret));
-        }
-    }
-}
-
-static esp_err_t start_button_subboard_task(void)
-{
-    const BaseType_t created = xTaskCreate(
-        button_subboard_task, "btn_subboard", 4096, NULL, 4, NULL);
-    return created == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
 static size_t align_up(size_t value, size_t alignment)
@@ -1171,9 +1074,7 @@ static esp_err_t run_app_session(void)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG,
-             "Camera photo app: Camera sub-board in LEFT slot, "
-             "Button LED sub-board in RIGHT slot (optional)");
+    ESP_LOGI(TAG, "Camera photo app: Camera sub-board in LEFT slot");
     ESP_ERROR_CHECK(app_init());
     ESP_ERROR_CHECK(camera_settings_init());
     ESP_ERROR_CHECK(photo_store_init());
@@ -1181,9 +1082,7 @@ void app_main(void)
     if (usb_ret != ESP_OK) {
         ESP_LOGW(TAG, "USB photo disk unavailable: %s", esp_err_to_name(usb_ret));
     }
-    ESP_ERROR_CHECK(init_subboard_manager());
     ESP_ERROR_CHECK(init_top_button());
-    ESP_ERROR_CHECK(start_button_subboard_task());
 
     s_app.mode = APP_MODE_CAMERA;
     s_app.flash_enabled = false;
