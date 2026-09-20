@@ -24,12 +24,16 @@ static esp_lcd_panel_handle_t s_panel;
 static esp_lcd_panel_io_handle_t s_panel_io;
 static esp_lcd_panel_io_handle_t s_touch_io;
 static esp_lcd_touch_handle_t s_touch;
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
 static lv_display_t *s_display;
 static lv_indev_t *s_input;
+#endif
 static bsp_display_config_t s_config;
 static bool s_config_valid;
 static bool s_spi_bus_initialized;
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
 static bool s_display_paused;
+#endif
 static bool s_display_sleeping;
 static bool s_display_deep_standby;
 
@@ -182,6 +186,7 @@ static esp_err_t apply_touch_orientation(bsp_display_rotation_t rotation)
     return ESP_OK;
 }
 
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
 static void round_qspi_area(lv_area_t *area, void *user_data)
 {
     (void)user_data;
@@ -195,6 +200,7 @@ static void round_qspi_area(lv_area_t *area, void *user_data)
     x2 = ((x2 + 4) / 4) * 4 - 1;
     area->x2 = x2 > max_x ? max_x : x2;
 }
+#endif
 
 esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_handle_t *ret_panel)
 {
@@ -323,6 +329,7 @@ esp_err_t bsp_touch_new(bsp_display_rotation_t rotation, esp_lcd_touch_handle_t 
     return ESP_OK;
 }
 
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
 lv_display_t *bsp_display_start_with_config(const bsp_display_config_t *config)
 {
     if (s_display) {
@@ -405,9 +412,12 @@ lv_display_t *bsp_display_start_with_config(const bsp_display_config_t *config)
 
 lv_display_t *bsp_display_start(void) { return bsp_display_start_with_config(NULL); }
 lv_display_t *bsp_display_get(void) { return s_display; }
+#endif
 esp_lcd_panel_handle_t bsp_display_get_panel(void) { return s_panel; }
 esp_lcd_panel_io_handle_t bsp_display_get_panel_io(void) { return s_panel_io; }
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
 lv_indev_t *bsp_display_get_input_dev(void) { return s_input; }
+#endif
 
 bsp_display_rotation_t bsp_display_get_rotation(void)
 {
@@ -424,12 +434,14 @@ esp_err_t bsp_display_set_rotation(bsp_display_rotation_t rotation)
         return ESP_OK;
     }
 
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
     /* Pausing drains the worker, so no flush can be mid-CASET/RASET/RAMWR while MADCTL changes. */
     bool paused_here = false;
     if (esp_lv_adapter_is_initialized() && !s_display_paused) {
         ESP_RETURN_ON_ERROR(esp_lv_adapter_pause(-1), TAG, "pause LVGL adapter failed");
         paused_here = true;
     }
+#endif
 
     esp_err_t ret = apply_panel_orientation(rotation);
     if (ret == ESP_OK && s_touch) {
@@ -438,6 +450,7 @@ esp_err_t bsp_display_set_rotation(bsp_display_rotation_t rotation)
     if (ret == ESP_OK) {
         s_config.rotation = rotation;
         s_config_valid = true;
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
         /* Frame buffers still hold pixels laid out for the previous orientation. */
         if (s_display && esp_lv_adapter_lock(-1) == ESP_OK) {
             lv_obj_t *screen = lv_display_get_screen_active(s_display);
@@ -446,6 +459,7 @@ esp_err_t bsp_display_set_rotation(bsp_display_rotation_t rotation)
             }
             esp_lv_adapter_unlock();
         }
+#endif
     } else {
         (void)apply_panel_orientation(previous);
         if (s_touch) {
@@ -453,6 +467,7 @@ esp_err_t bsp_display_set_rotation(bsp_display_rotation_t rotation)
         }
     }
 
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
     if (paused_here) {
         esp_err_t resume_ret = esp_lv_adapter_resume();
         if (resume_ret != ESP_OK) {
@@ -462,6 +477,7 @@ esp_err_t bsp_display_set_rotation(bsp_display_rotation_t rotation)
             }
         }
     }
+#endif
     ESP_RETURN_ON_ERROR(ret, TAG, "set CO5300 rotation to %d failed", (int)rotation);
     ESP_LOGI(TAG, "CO5300 rotation set to %d (touch synchronized)", (int)rotation);
     return ESP_OK;
@@ -489,10 +505,12 @@ esp_err_t bsp_display_on(void)
         s_display_sleeping = false;
     }
     ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, true), TAG, "turn on CO5300 failed");
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
     if (s_display_paused) {
         ESP_RETURN_ON_ERROR(esp_lv_adapter_resume(), TAG, "resume LVGL adapter failed");
         s_display_paused = false;
     }
+#endif
     ESP_LOGI(TAG, "CO5300 display on (Sleep Out + Display On)");
     return ESP_OK;
 }
@@ -503,33 +521,39 @@ esp_err_t bsp_display_off(void)
     ESP_RETURN_ON_FALSE(!s_display_deep_standby, ESP_ERR_INVALID_STATE, TAG,
                         "CO5300 is already in Deep Standby");
 
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
     bool paused_here = false;
     if (esp_lv_adapter_is_initialized() && !s_display_paused) {
         ESP_RETURN_ON_ERROR(esp_lv_adapter_pause(-1), TAG, "pause LVGL adapter failed");
         s_display_paused = true;
         paused_here = true;
     }
+#endif
 
     esp_err_t ret = esp_lcd_panel_disp_on_off(s_panel, false);
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
     if (ret != ESP_OK && paused_here) {
         (void)esp_lv_adapter_resume();
         s_display_paused = false;
         ESP_RETURN_ON_ERROR(ret, TAG, "turn off CO5300 failed");
     }
+#endif
     ESP_RETURN_ON_ERROR(ret, TAG, "turn off CO5300 failed");
 
     if (!s_display_sleeping) {
         ret = esp_lcd_panel_disp_sleep(s_panel, true);
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
         if (ret != ESP_OK && paused_here) {
             (void)esp_lcd_panel_disp_on_off(s_panel, true);
             (void)esp_lv_adapter_resume();
             s_display_paused = false;
         }
+#endif
         ESP_RETURN_ON_ERROR(ret, TAG, "CO5300 Sleep In failed");
         s_display_sleeping = true;
     }
 
-    ESP_LOGI(TAG, "CO5300 display off (Display Off + Sleep In); LVGL paused");
+    ESP_LOGI(TAG, "CO5300 display off (Display Off + Sleep In)");
     return ESP_OK;
 }
 
@@ -563,5 +587,7 @@ esp_err_t bsp_display_enter_deep_standby(void)
     ESP_LOGI(TAG, "CO5300 entered Deep Standby");
     return ESP_OK;
 }
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
 bool bsp_display_lock(int32_t timeout_ms) { return esp_lv_adapter_lock(timeout_ms) == ESP_OK; }
 void bsp_display_unlock(void) { esp_lv_adapter_unlock(); }
+#endif
