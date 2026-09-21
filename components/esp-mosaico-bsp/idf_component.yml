@@ -26,6 +26,11 @@ dependencies:
     rules:
       - if: $CONFIG{BSP_DISPLAY_LVGL_ENABLE} == True
 
+  lvgl/lvgl:
+    version: ^9.5.0,<9.6.0
+    rules:
+      - if: $CONFIG{BSP_DISPLAY_ENABLE} == True
+
   espressif/esp_lcd_co5300: ^2.2
 
   espressif/esp_lcd_touch_cst9220: ^0.1
