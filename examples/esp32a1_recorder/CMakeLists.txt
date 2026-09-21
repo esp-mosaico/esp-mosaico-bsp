@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(esp32a1_recorder)
+include(cmake/nand_busy_timeout.cmake)
+include(cmake/nand_short_transactions.cmake)

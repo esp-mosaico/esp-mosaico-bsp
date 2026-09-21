@@ -31,6 +31,7 @@
 
 #define PREVIEW_WIDTH              BSP_LCD_H_RES
 #define PREVIEW_HEIGHT             BSP_LCD_V_RES
+#define PREVIEW_MAX_CROP_SIZE      768U
 #define PREVIEW_BUFFER_ALIGNMENT   128
 #define CAPTURE_FAILURE_LIMIT      3
 #define CAMERA_RETRY_DELAY_MS      500
@@ -377,6 +378,10 @@ static esp_err_t app_init(void)
 static esp_err_t camera_wait_and_open(void)
 {
     mosaico_camera_config_t config = MOSAICO_CAMERA_DEFAULT_CONFIG();
+    /* OV3640 and SC101IOT have different native profiles. Let the detected
+     * sensor's Kconfig default choose the input size rather than forcing XGA. */
+    config.width = 0;
+    config.height = 0;
     config.allow_unidentified = true;
 
     while (true) {
@@ -412,11 +417,25 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
         frame->pixel_format == V4L2_PIX_FMT_UYVY,
         ESP_ERR_NOT_SUPPORTED, TAG,
         "unsupported camera format 0x%08" PRIx32, frame->pixel_format);
-    const uint32_t crop_size = align_down_even(frame->width < frame->height ? frame->width : frame->height);
-    ESP_RETURN_ON_FALSE(crop_size > 0, ESP_ERR_INVALID_SIZE, TAG, "invalid camera frame size: %" PRIu32 "x%" PRIu32,
-                        frame->width, frame->height);
-    const uint32_t bytes_per_line = frame->bytes_per_line ? frame->bytes_per_line : frame->width * 2U;
-    ESP_RETURN_ON_FALSE((bytes_per_line % 2U) == 0, ESP_ERR_INVALID_SIZE, TAG, "camera stride is not pixel aligned");
+    uint32_t crop_size = frame->width < frame->height ? frame->width : frame->height;
+    if (crop_size > PREVIEW_MAX_CROP_SIZE) {
+        crop_size = PREVIEW_MAX_CROP_SIZE;
+    }
+    /* PPA truncates its fractional scale. Use exactly representable ratios:
+     * 768 * 5/8, 640 * 3/4, or 480 * 1 all produce a full 480px output. */
+    if (crop_size >= 768U) {
+        crop_size = 768U;
+    } else if (crop_size >= 640U) {
+        crop_size = 640U;
+    } else if (crop_size >= 480U) {
+        crop_size = 480U;
+    }
+    ESP_RETURN_ON_FALSE(crop_size >= PREVIEW_WIDTH && crop_size >= PREVIEW_HEIGHT,
+                        ESP_ERR_INVALID_SIZE, TAG,
+                        "camera frame is too small for the preview");
+
+    const uint32_t bytes_per_line =
+        frame->bytes_per_line ? frame->bytes_per_line : frame->width * 2U;
 
     ESP_RETURN_ON_ERROR(
         esp_cache_msync(
@@ -437,8 +456,10 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
             .pic_h = frame->height,
             .block_w = crop_size,
             .block_h = crop_size,
-            .block_offset_x = align_down_even((frame->width - crop_size) / 2U),
-            .block_offset_y = align_down_even((frame->height - crop_size) / 2U),
+            .block_offset_x =
+                align_down_even((frame->width - crop_size) / 2U),
+            .block_offset_y =
+                align_down_even((frame->height - crop_size) / 2U),
             .srm_cm = PPA_SRM_COLOR_MODE_YUV422_UYVY,
             .yuv_range = PPA_COLOR_RANGE_LIMIT,
             .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,
@@ -451,10 +472,12 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
             .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
         },
         .rotation_angle = PPA_SRM_ROTATION_ANGLE_270,
-        .scale_x = (float)PREVIEW_WIDTH / (float)crop_size,
-        .scale_y = (float)PREVIEW_HEIGHT / (float)crop_size,
-        .mirror_x = s_app.preview_flip,
-        .mirror_y = false,
+        .scale_x = (float)PREVIEW_WIDTH / crop_size,
+        .scale_y = (float)PREVIEW_HEIGHT / crop_size,
+        /* Add horizontal correction while preserving the Front/Rear toggle. */
+        .mirror_x = !s_app.preview_flip,
+        /* Fixed vertical correction, independent of the saved Front/Rear toggle. */
+        .mirror_y = true,
         .mode = PPA_TRANS_MODE_BLOCKING,
     };
     ESP_RETURN_ON_ERROR(

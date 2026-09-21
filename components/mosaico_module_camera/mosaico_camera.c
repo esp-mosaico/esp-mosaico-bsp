@@ -111,15 +111,20 @@ static uint32_t s_usj_intr_enable_mask;
 
 static esp_err_t camera_flash_force_off(void)
 {
+    /* FDC6312P is a high-side P-MOS: sink gate to turn on, release to
+     * turn off. Board R2 (10k) pulls the gate to the MOS source supply.
+     * Do not drive high from the MCU supply or enable its internal pulls:
+     * that supply can decay earlier than the camera rail at power-off. */
     const gpio_config_t config = {
         .pin_bit_mask = BIT64(GPIO_NUM_34),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .mode = GPIO_MODE_OUTPUT_OD,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     ESP_RETURN_ON_ERROR(gpio_set_level(GPIO_NUM_34, 1), TAG, "preset camera flash off failed");
-    return gpio_config(&config);
+    ESP_RETURN_ON_ERROR(gpio_config(&config), TAG, "configure camera flash open drain failed");
+    return gpio_sleep_sel_dis(GPIO_NUM_34);
 }
 
 static esp_err_t camera_hardware_acquire(bsp_subboard_slot_t slot, mosaico_camera_hw_config_t *out_config)
@@ -417,6 +422,8 @@ static esp_err_t start_stream(mosaico_camera_handle_t camera)
 
 static esp_err_t stop_stream(mosaico_camera_handle_t camera)
 {
+    /* Release the flash even when the stream has already stopped. */
+    flash_gpio_set_off(camera);
     if (!camera->streaming || camera->fd < 0) {
         return ESP_OK;
     }
@@ -518,6 +525,9 @@ static esp_err_t release_resources(mosaico_camera_handle_t camera)
     }
 
     if (camera->hardware_claimed) {
+        /* Sensor drivers do not own this board's PWDN pin. */
+        ESP_RETURN_ON_ERROR(gpio_set_level(camera->hardware.pwdn_io, 1), TAG,
+                            "put camera in sleep before releasing hardware failed");
         ret = camera_hardware_release(BSP_SUBBOARD_SLOT_LEFT);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Release camera hardware failed; context retained: %s", esp_err_to_name(ret));
@@ -540,6 +550,27 @@ static esp_err_t release_resources(mosaico_camera_handle_t camera)
 
 static esp_err_t initialize_video_device(mosaico_camera_handle_t camera)
 {
+    /* CameraBoard CAM_PWDN: 0 = normal (LED1 on), 1 = sleep.
+     * Own the pin here instead of passing it to the generic sensor driver:
+     * SC101IOT's generic power-on routine drives it high, unlike this board.
+     * Keeping it NC in the sensor config also prevents failed auto-detection
+     * probes from changing the board's power state. */
+    const gpio_config_t pwdn_config = {
+        .pin_bit_mask = BIT64(camera->hardware.pwdn_io),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_RETURN_ON_ERROR(gpio_set_level(camera->hardware.pwdn_io, 0), TAG,
+                        "preset camera normal mode failed");
+    ESP_RETURN_ON_ERROR(gpio_config(&pwdn_config), TAG, "configure camera PWDN failed");
+    ESP_RETURN_ON_ERROR(gpio_sleep_sel_dis(camera->hardware.pwdn_io), TAG,
+                        "disable camera PWDN sleep override failed");
+    vTaskDelay(pdMS_TO_TICKS(CAMERA_PWDN_WAKE_DELAY_MS));
+    ESP_LOGI(TAG, "CameraBoard PWDN GPIO%d=0: normal mode, LED1 on",
+             camera->hardware.pwdn_io);
+
     esp_cam_ctlr_dvp_pin_config_t pins = {
         .data_width = CAM_CTLR_DATA_WIDTH_8,
         .data_io = {
@@ -560,7 +591,7 @@ static esp_err_t initialize_video_device(mosaico_camera_handle_t camera)
             .freq = camera->hardware.sccb_freq_hz,
         },
         .reset_pin = camera->hardware.reset_io,
-        .pwdn_pin = camera->hardware.pwdn_io,
+        .pwdn_pin = GPIO_NUM_NC,
         .dvp_pin = pins,
         .xclk_freq = camera->hardware.xclk_freq_hz,
     };

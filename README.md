@@ -140,6 +140,8 @@ These examples require an OV3640 Camera module installed in the left expansion s
 
 | Example | Description |
 | --- | --- |
+| [`esp32a1_mp3`](examples/esp32a1_mp3) | V1.2 A1 MP3 player with Si12T keys and a rotated LVGL UI |
+| [`esp32a1_recorder`](examples/esp32a1_recorder) | A1 WAV recorder: long-press TK7, NAND recordings, LVGL playback list |
 | [`gmf_audio_player`](examples/gmf_audio_player) | Embedded MP3 playback using ESP-GMF |
 | [`voice_tts`](examples/voice_tts) | Chinese text-to-speech using ESP-SR Xiaole voice data |
 | [`voice_wake_cmd`](examples/voice_wake_cmd) | Wake word and Chinese speech-command recognition with TTS feedback |

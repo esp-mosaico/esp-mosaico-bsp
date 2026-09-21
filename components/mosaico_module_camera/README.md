@@ -34,5 +34,21 @@ hardware JPEG engine through `mosaico_camera_jpeg_decoder_new()` and
 counter-clockwise by 90 degrees into the model-upright orientation before
 inference.
 
+Flash GPIO34 uses active-low open-drain output: zero sinks the FDC6312P gate
+to turn on; one releases it to the board's 10k gate-to-source pull-up (R2).
+Internal pulls are disabled. Stopping a stream also releases the flash, even
+if it is already stopped. This avoids actively driving the off-state gate
+from the MCU rail, but cannot guarantee glitch-free hard power removal:
+an unpowered GPIO's protection clamp and rail decay need hardware validation.
+
+CameraBoard defines CAM_PWDN as 0 = normal and 1 = sleep; its P-MOS LED1 circuit
+therefore stays on while the camera is awake. The module owns this GPIO and
+passes `GPIO_NUM_NC` for the sensor driver's PWDN pin, because the generic
+SC101IOT driver otherwise drives it high at power-on. Before sensor detection,
+the module configures it low and waits 20 ms. Explicit sleep and final hardware
+release drive it high; wake drives it low. Sensor auto-detection cannot override
+this board-specific polarity. Closing a stream alone keeps the sensor registered
+and awake, as before; use power-down or delete to turn off the indicator.
+
 OV3640-only tuning and flash exposure register operations are skipped for
 SC101IOT. The current camera wiring supports the left slot only.

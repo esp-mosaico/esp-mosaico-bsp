@@ -30,6 +30,10 @@ static i2s_std_config_t default_i2s_config(void)
             .din = BSP_AUDIO_I2S_DSIN,
         },
     };
+    /* The ESP32-S31 default I2S source is the 40 MHz XTAL.  Audio MCLK values
+     * such as 11.2896/12.288 MHz cannot be divided cleanly from it and produce
+     * severe clock jitter at the ES8311. */
+    config.clk_cfg.clk_src = I2S_CLK_SRC_APLL;
     config.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
     return config;
 }
@@ -57,13 +61,16 @@ esp_err_t bsp_audio_init(const i2s_std_config_t *i2s_config)
         .port = I2S_NUM_0,
         .tx_handle = s_tx_channel,
         .rx_handle = s_rx_channel,
+        /* Keep the clock selected by the board/application when esp_codec_dev
+         * later reconfigures the stream for a different sample rate. */
+        .clk_src = active->clk_cfg.clk_src,
     };
     s_data_if = audio_codec_new_i2s_data(&data_config);
     ESP_RETURN_ON_FALSE(s_data_if, ESP_FAIL, TAG, "create codec I2S data interface failed");
-    ESP_LOGI(TAG, "I2S initialized: MCLK=%d BCLK=%d WS=%d DOUT=%d DIN=%d",
+    ESP_LOGI(TAG, "I2S initialized: MCLK=%d BCLK=%d WS=%d DOUT=%d DIN=%d clk_src=%d",
              active->gpio_cfg.mclk, active->gpio_cfg.bclk,
              active->gpio_cfg.ws, active->gpio_cfg.dout,
-             active->gpio_cfg.din);
+             active->gpio_cfg.din, active->clk_cfg.clk_src);
     return ESP_OK;
 }
 
@@ -90,16 +97,24 @@ static esp_codec_dev_handle_t create_codec(esp_codec_dev_type_t type, int16_t pa
     es8311_codec_cfg_t codec_config = {
         .ctrl_if = control_if,
         .gpio_if = gpio_if,
-        .codec_mode = type == ESP_CODEC_DEV_TYPE_OUT ? ESP_CODEC_DEV_WORK_MODE_DAC : ESP_CODEC_DEV_WORK_MODE_ADC,
-        .pa_pin = pa_pin,
-        .master_mode = false,
-        .use_mclk = true,
-        .digital_mic = false,
-        .hw_gain = {
-            .pa_voltage = 5.0f,
-            .codec_dac_voltage = 3.3f,
+        .sys_cfg = {
+            .is_master = false,
+            .no_mclk = false,
         },
-        .no_dac_ref = true,
+        .adc_cfg = {
+            .digital_mic = false,
+        },
+        .dac_cfg = {
+            .ref_enable = false,
+        },
+        .pa_cfg = {
+            .pa_pin = pa_pin,
+            .pa_active_low = false,
+            .hw_gain = {
+                .pa_voltage = 5.0f,
+                .codec_dac_voltage = 3.3f,
+            },
+        },
     };
     const audio_codec_if_t *codec_if = es8311_codec_new(&codec_config);
     if (!codec_if) {

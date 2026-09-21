@@ -1,0 +1,23 @@
+dependencies:
+  idf:
+    version: ">=6.2"
+
+  esp-mosaico-bsp:
+    path: ../../../components/esp-mosaico-bsp
+
+  espressif/esp32_a1:
+    git: ssh://git@gitlab.espressif.cn:27227/adf/esp-audio-dev.git
+    version: 9585e46fc81a96b1b11cd6bacff96be89d6c7351
+    path: esp32_a1
+
+  # A1 and esp_codec_dev must come from the same driver revision.  This direct
+  # dependency also overrides the BSP's registry source for this application.
+  espressif/esp_codec_dev:
+    git: ssh://git@gitlab.espressif.cn:27227/adf/esp-audio-dev.git
+    version: 9585e46fc81a96b1b11cd6bacff96be89d6c7351
+    path: esp_codec_dev
+
+  joltwallet/littlefs: "^1.22.3"
+
+  # esp_lvgl_adapter 0.6.2 still includes headers deprecated in LVGL 9.6.
+  lvgl/lvgl: "9.5.0"
