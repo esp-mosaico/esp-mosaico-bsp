@@ -4,6 +4,14 @@ menu "ESP-Mosaico BSP"
         bool "Enable BSP display support"
         default y
 
+    config BSP_DISPLAY_LVGL_ENABLE
+        bool "Enable LVGL display adapter"
+        depends on BSP_DISPLAY_ENABLE
+        default y
+        help
+            Disable for GSP or other renderers using the raw panel and touch
+            interfaces. The renderer owns synchronization in that mode.
+
     config BSP_CO5300_ENABLE_TE
         bool "Enable CO5300 TE anti-tearing synchronization"
         depends on BSP_DISPLAY_ENABLE

@@ -11,8 +11,10 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_touch.h"
-#include "esp_lv_adapter.h"
 #include "sdkconfig.h"
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
+#include "esp_lv_adapter.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -56,39 +58,51 @@ typedef enum {
 #define BSP_TOUCH_BASE_SWAP_XY        false
 #define BSP_TOUCH_BASE_MIRROR_X       false
 #define BSP_TOUCH_BASE_MIRROR_Y       false
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
 #if CONFIG_BSP_CO5300_ENABLE_TE
 #define BSP_LCD_TEAR_AVOID_MODE       ESP_LV_ADAPTER_TEAR_AVOID_MODE_TE_SYNC
 #else
 #define BSP_LCD_TEAR_AVOID_MODE       ESP_LV_ADAPTER_TEAR_AVOID_MODE_DEFAULT
 #endif
 
+#define BSP_DISPLAY_ADAPTER_CONFIG() \
+    .tear_avoid_mode = BSP_LCD_TEAR_AVOID_MODE, \
+    .buffer_height = 0, .task_stack_size = 0, \
+    .enable_ppa_accel = false, .enable_touch = true,
+#else
+#define BSP_DISPLAY_ADAPTER_CONFIG()
+#endif
+
 typedef struct {
     bsp_display_rotation_t rotation;
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
     esp_lv_adapter_tear_avoid_mode_t tear_avoid_mode;
     uint16_t buffer_height;
     uint32_t task_stack_size;
     bool enable_ppa_accel;
     bool enable_touch;
+#endif
 } bsp_display_config_t;
 
-#define BSP_DISPLAY_DEFAULT_CONFIG() {                 \
-    .rotation = BSP_LCD_ROTATION_DEFAULT,              \
-    .tear_avoid_mode = BSP_LCD_TEAR_AVOID_MODE,        \
-    .buffer_height = 0,                                \
-    .task_stack_size = 0,                              \
-    .enable_ppa_accel = false,                         \
-    .enable_touch = true,                              \
+#define BSP_DISPLAY_DEFAULT_CONFIG() { \
+    .rotation = BSP_LCD_ROTATION_DEFAULT, \
+    BSP_DISPLAY_ADAPTER_CONFIG() \
 }
 
+/* Non-LVGL callers must serialize panel operations with their renderer. */
 esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_handle_t *ret_panel);
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
 lv_display_t *bsp_display_start(void);
 lv_display_t *bsp_display_start_with_config(const bsp_display_config_t *config);
 lv_display_t *bsp_display_get(void);
+#endif
 esp_lcd_panel_handle_t bsp_display_get_panel(void);
 /** Get the panel IO handle after bsp_display_new() or bsp_display_start(). */
 esp_lcd_panel_io_handle_t bsp_display_get_panel_io(void);
 esp_err_t bsp_touch_new(bsp_display_rotation_t rotation, esp_lcd_touch_handle_t *ret_touch);
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
 lv_indev_t *bsp_display_get_input_dev(void);
+#endif
 
 /**
  * @brief Rotate the display and the touch panel at runtime.
@@ -154,8 +168,10 @@ esp_err_t bsp_display_enter_deep_standby(void);
  */
 esp_err_t bsp_display_isolate_cs(void);
 
+#if CONFIG_BSP_DISPLAY_LVGL_ENABLE
 bool bsp_display_lock(int32_t timeout_ms);
 void bsp_display_unlock(void);
+#endif
 
 #ifdef __cplusplus
 }
