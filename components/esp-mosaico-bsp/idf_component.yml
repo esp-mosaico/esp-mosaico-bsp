@@ -11,9 +11,18 @@ tags:
 dependencies:
   idf: ">=6.2"
 
+  mosaico_boot_splash:
+    version: "*"
+    override_path: ../mosaico_boot_splash
+
   espressif/esp_lvgl_adapter:
     version: "0.6.2"
     public: true
+    rules:
+      - if: $CONFIG{BSP_DISPLAY_LVGL_ENABLE} == True
+
+  lvgl/lvgl:
+    version: ^9.5.0,<9.6.0
     rules:
       - if: $CONFIG{BSP_DISPLAY_LVGL_ENABLE} == True
 

@@ -1,0 +1,9 @@
+version: "0.1.0"
+description: Retained boot splash handoff shared by the ESP-Mosaico bootloader and BSP
+license: Apache-2.0
+
+targets:
+  - esp32s31
+
+dependencies:
+  idf: ">=6.2"
