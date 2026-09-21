@@ -19,17 +19,12 @@ dependencies:
     version: "0.6.2"
     public: true
     rules:
-      - if: $CONFIG{BSP_DISPLAY_LVGL_ENABLE} == True
+      - if: $CONFIG{BSP_DISPLAY_ENABLE} == True && $CONFIG{BSP_DISPLAY_LVGL_ENABLE} == True
 
   lvgl/lvgl:
-    version: ^9.5.0,<9.6.0
+    version: "^9.5.0,<9.6.0"
     rules:
-      - if: $CONFIG{BSP_DISPLAY_LVGL_ENABLE} == True
-
-  lvgl/lvgl:
-    version: ^9.5.0,<9.6.0
-    rules:
-      - if: $CONFIG{BSP_DISPLAY_ENABLE} == True
+      - if: $CONFIG{BSP_DISPLAY_ENABLE} == True && $CONFIG{BSP_DISPLAY_LVGL_ENABLE} == True
 
   espressif/esp_lcd_co5300: ^2.2
 
