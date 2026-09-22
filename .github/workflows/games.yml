@@ -12,26 +12,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          path: esp-mosaico-bsp
-      - id: refs
-        run: python3 esp-mosaico-bsp/tests/games/dependency_refs.py >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: espressif2022/raylib-lite-engine
-          ref: ${{ steps.refs.outputs.engine }}
-          path: raylib-lite-engine
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: "3.12"
       - run: python -m pip install Pillow
+      - name: Resolve Host dependencies from the BSP declaration
+        run: cmake -S tools/game-dependencies -B build-game-deps
       - run: python -m unittest discover -s tests/games -v
-        working-directory: esp-mosaico-bsp
       - run: python -m unittest discover -s tests -v
-        working-directory: esp-mosaico-bsp
   firmware:
-    # Full firmware work is manual; Host behavior runs on every change.
-    if: github.event_name == 'workflow_dispatch'
+    # Exercise the documented standalone build on PRs as well as manual runs.
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     strategy:
@@ -40,42 +31,28 @@ jobs:
         game: [sky_hop, tower_defense, raylib_shooter]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          path: esp-mosaico-bsp
-      - id: refs
-        run: python3 esp-mosaico-bsp/tests/games/dependency_refs.py >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: espressif2022/raylib-lite-engine
-          ref: ${{ steps.refs.outputs.engine }}
-          path: raylib-lite-engine
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: esp-mosaico/esp-mosaico-utils
-          ref: ${{ steps.refs.outputs.utils }}
-          path: esp-mosaico-utils
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           repository: espressif/esp-idf
           ref: 7b9cc1ac79f865983f59bb8ff3ff43eb74ff1dbe
           submodules: recursive
-          path: esp-idf
+          path: .idf/esp-idf
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: "3.12"
       - name: Install pinned ESP-IDF tools
         run: |
-          export IDF_PATH="$GITHUB_WORKSPACE/esp-idf"
+          export IDF_PATH="$GITHUB_WORKSPACE/.idf/esp-idf"
           "$IDF_PATH/install.sh" all
           source "$IDF_PATH/export.sh"
           python -m pip install Pillow
-      - name: Build game without existing generated assets
-        run: >-
-          python esp-mosaico-utils/mosaico-tools/skills/idf-low-noise-build/scripts/idf_low_noise_build.py
-          --idf-path "$GITHUB_WORKSPACE/esp-idf"
-          --project "esp-mosaico-bsp/examples/${{ matrix.game }}" build
+      - name: Build from the standalone BSP checkout
+        run: |
+          export IDF_PATH="$GITHUB_WORKSPACE/.idf/esp-idf"
+          source "$IDF_PATH/export.sh"
+          idf.py --preview -C "examples/${{ matrix.game }}" -DIDF_TARGET=esp32s31 build
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
           name: game-${{ matrix.game }}-logs
-          path: esp-mosaico-bsp/examples/${{ matrix.game }}/.codex-runs/
+          path: examples/${{ matrix.game }}/build/log/

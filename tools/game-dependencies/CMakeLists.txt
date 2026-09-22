@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22)
+project(mosaico_game_host_dependencies NONE)
+set(MOSAICO_GAME_HOST_ONLY ON)
+include("${CMAKE_CURRENT_LIST_DIR}/../../examples/common/game_dependencies.cmake")
+message(STATUS "Raylib Host runner: ${RAYLIB_LITE_ENGINE_ROOT}/host/run_game.py")

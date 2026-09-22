@@ -6,15 +6,29 @@ drawing calls directly to a 480x480 RGB565 framebuffer instead of Raylib's
 generic software-OpenGL rasterizer. Four retained buffers absorb LCD/GSP
 latency and are presented without an extra full-frame copy.
 
-```bash
-python mosaico.py game sim --project projects/raylib_shooter
-python mosaico.py game build --project projects/raylib_shooter
-python mosaico.py iris system-update --project projects/raylib_shooter
+<!-- bsp-usage:start -->
+## 独立 BSP 克隆：构建与仿真
+
+从 BSP 仓库根目录运行。固件需要已启用的 ESP-IDF >=6.2（ESP32-S31）、Git、CMake >=3.22 和 Python Pillow：
+
+```sh
+python -m pip install Pillow
+idf.py --preview -C examples/raylib_shooter -DIDF_TARGET=esp32s31 build
 ```
 
-The Registry GSP package needs a standalone scene compiler. This workspace
-discovers `../esp-gsp/ci/gspc-dev`; in a standalone clone, set
-`GSPC_EXECUTABLE` to a compiler compatible with ESP-GSP 1.0.0.
+首次配置会自动下载[依赖清单](../common/game_dependencies.json)指定的引擎和 utils 提交到本工程的 `build/_deps/`。
+无需 vibe 工作区或相邻仓库；重复构建复用已下载的提交。仅这些游戏示例需要这两项依赖。
+ESP-GSP 固定为 1.4.0，GSP 编译器由固定的产品工具自动解析。
+
+Host 仿真不需要 ESP-IDF。从 BSP 根目录执行：
+
+```sh
+cmake -S tools/game-dependencies -B build-game-deps
+python build-game-deps/_deps/mosaico_game_engine-src/host/run_game.py --project examples/raylib_shooter --headless --frames 300
+```
+
+安装使用 ESP-Mosaico 产品 CLI 和 retained Recovery，详见[游戏开发指南](../../docs/game-development.zh-CN.md#设备安装)。
+<!-- bsp-usage:end -->
 
 Touch to start and drag the ship; firing is automatic. Gameplay runs at 30 Hz
 and uses fixed enemy and bullet pools. Raylib ESP 6.0.0~2 does not yet populate

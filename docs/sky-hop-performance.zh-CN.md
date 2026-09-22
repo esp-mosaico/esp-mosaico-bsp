@@ -20,11 +20,12 @@ TE compose 缓冲数和 draw-buffer 行数。
 
 ## 分析与判据
 
-在工作区根目录生成比较矩阵，或分析已保存的日志：
+在 BSP 根目录先准备 Host 依赖，再生成比较矩阵或分析已保存的日志：
 
 ```sh
-python submodule/raylib-lite-engine/tools/game_benchmark_matrix.py --output benchmark-matrix.json
-python submodule/raylib-lite-engine/tools/analyze_game_perf.py --label fb3-te1-lines34 raw.log
+cmake -S tools/game-dependencies -B build-game-deps
+python build-game-deps/_deps/mosaico_game_engine-src/tools/game_benchmark_matrix.py --output benchmark-matrix.json
+python build-game-deps/_deps/mosaico_game_engine-src/tools/analyze_game_perf.py --label fb3-te1-lines34 raw.log
 ```
 
 `raw.log` 替换为本次运行保存的日志路径。分析工具及其格式由引擎维护。

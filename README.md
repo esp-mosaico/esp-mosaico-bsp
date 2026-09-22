@@ -180,9 +180,20 @@ This project is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE) 
 | [Tower Defense](examples/tower_defense/README.md) | Atlas, Tiled and deterministic Host replay |
 | [Raylib Shooter](examples/raylib_shooter/README.md) | Shared RGB565 game rendering |
 
-These examples consume explicit esp-mosaico-utils and Raylib Lite Engine
-dependencies; those dependencies are not required by the base BSP components.
-Create apps through the workspace `mosaico.py game create` command. Preserve
-retained Recovery and use its `iris system-update` installation path for games.
-Run `python -m unittest discover -s tests/games -v` for example behavior tests;
-set RAYLIB_LITE_ENGINE_ROOT when the engine is not a sibling checkout.
+Clone this BSP repository and follow each game's build instructions. The game
+CMake entry automatically downloads the exact engine and utils revisions in
+[game_dependencies.json](examples/common/game_dependencies.json) into its build
+directory. No adjacent repositories or vibe checkout are needed to build or
+run the Host examples. These dependencies do not apply to base BSP components.
+
+For Host behavior tests:
+
+```sh
+python -m pip install Pillow
+cmake -S tools/game-dependencies -B build-game-deps
+python -m unittest discover -s tests/games -v
+```
+
+Use `RAYLIB_LITE_ENGINE_ROOT` explicitly for an existing Host engine checkout.
+Game installation retains the Recovery contract and uses the product CLI;
+see the [game guide](docs/game-development.zh-CN.md).

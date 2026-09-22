@@ -20,16 +20,29 @@ the next level, while completing level 4 finishes the run.
 优先读取 `game_assets` 分区；修复 Recovery system-update 通道后应取消整包嵌入，
 以恢复约 300 KiB 应用空间。
 
-## 构建与安装
+<!-- bsp-usage:start -->
+## 独立 BSP 克隆：构建与仿真
 
-```bash
-python mosaico.py game sim projects/sky_hop
-python mosaico.py game sim projects/sky_hop --headless --frames 300
-python mosaico.py game build --project projects/sky_hop
-python mosaico.py recover  # 空白或未验证设备首次安装前
-python mosaico.py iris system-update --project projects/sky_hop
-python mosaico.py iris logs --project projects/sky_hop
+从 BSP 仓库根目录运行。固件需要已启用的 ESP-IDF >=6.2（ESP32-S31）、Git、CMake >=3.22 和 Python Pillow：
+
+```sh
+python -m pip install Pillow
+idf.py --preview -C examples/sky_hop -DIDF_TARGET=esp32s31 build
 ```
+
+首次配置会自动下载[依赖清单](../common/game_dependencies.json)指定的引擎和 utils 提交到本工程的 `build/_deps/`。
+无需 vibe 工作区或相邻仓库；重复构建复用已下载的提交。仅这些游戏示例需要这两项依赖。
+ESP-GSP 固定为 1.4.0，GSP 编译器由固定的产品工具自动解析。
+
+Host 仿真不需要 ESP-IDF。从 BSP 根目录执行：
+
+```sh
+cmake -S tools/game-dependencies -B build-game-deps
+python build-game-deps/_deps/mosaico_game_engine-src/host/run_game.py --project examples/sky_hop --headless --frames 300
+```
+
+安装使用 ESP-Mosaico 产品 CLI 和 retained Recovery，详见[游戏开发指南](../../docs/game-development.zh-CN.md#设备安装)。
+<!-- bsp-usage:end -->
 
 浏览器模拟器地址为 `http://127.0.0.1:8460/`。键盘使用 `A/D` 或方向键移动、
 空格跳跃、`P` 暂停、回车开始/进入下一关；触屏设备可同时按住底部移动键和跳跃键。

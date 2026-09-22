@@ -16,10 +16,6 @@
     "bsp_component": {
       "base": "bsp",
       "path": "components/esp-mosaico-bsp"
-    },
-    "iris_component": {
-      "base": "esp_iris",
-      "path": "components/esp_iris"
     }
   },
   "files": [
@@ -48,9 +44,8 @@
       "source": "README.md",
       "replacements": [
         {
-          "pattern": "projects/raylib_shooter",
-          "replacement": "{{project_path|shell}}",
-          "count": 3
+          "pattern": "(?s)<!-- bsp-usage:start -->.*?<!-- bsp-usage:end -->",
+          "replacement": "## \u5de5\u4f5c\u533a\u4e2d\u7684\u751f\u6210\u5e94\u7528\n\n\u4ece\u5de5\u4f5c\u533a\u6839\u76ee\u5f55\u8fd0\u884c\uff1a\n\n```sh\npython mosaico.py game sim --project {{project_path|shell}} --headless --frames 300\npython mosaico.py game build --project {{project_path|shell}}\npython mosaico.py iris system-update --project {{project_path|shell}}\n```\n\n\u7a7a\u767d\u6216\u672a\u9a8c\u8bc1\u8bbe\u5907\u5148\u6267\u884c `python mosaico.py recover`\u3002\u9996\u6b21\u5b89\u88c5\u3001\u5206\u533a\u6216\u8d44\u6e90\u53d8\u5316\u4f7f\u7528 `iris system-update`\u3002\n\u751f\u6210\u5e94\u7528\u663e\u5f0f\u590d\u7528\u5de5\u4f5c\u533a\u56fa\u5b9a\u7684 BSP\u3001\u5f15\u64ce\u548c utils\uff1b\u4e0d\u81ea\u52a8\u4ece\u76f8\u90bb\u76ee\u5f55\u731c\u6d4b\u4f9d\u8d56\u3002\n"
         }
       ]
     },
@@ -99,10 +94,6 @@
         {
           "pattern": "^    override_path: .*components/esp-mosaico-bsp$",
           "replacement": "    override_path: {{bsp_component|json}}"
-        },
-        {
-          "pattern": "^    override_path: .*ESP-Iris/components/esp_iris$",
-          "replacement": "    override_path: {{iris_component|json}}"
         }
       ]
     },
