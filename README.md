@@ -171,3 +171,18 @@ These examples require an OV3640 Camera module installed in the left expansion s
 ## License
 
 This project is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE) for details.
+
+### Raylib games
+
+| Example | Content |
+| --- | --- |
+| [Sky Hop](examples/sky_hop/README.md) | Platform model, scrolling and audio |
+| [Tower Defense](examples/tower_defense/README.md) | Atlas, Tiled and deterministic Host replay |
+| [Raylib Shooter](examples/raylib_shooter/README.md) | Shared RGB565 game rendering |
+
+These examples consume explicit esp-mosaico-utils and Raylib Lite Engine
+dependencies; those dependencies are not required by the base BSP components.
+Create apps through the workspace `mosaico.py game create` command. Preserve
+retained Recovery and use its `iris system-update` installation path for games.
+Run `python -m unittest discover -s tests/games -v` for example behavior tests;
+set RAYLIB_LITE_ENGINE_ROOT when the engine is not a sibling checkout.

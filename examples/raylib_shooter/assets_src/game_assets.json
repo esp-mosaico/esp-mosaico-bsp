@@ -1,0 +1,10 @@
+{
+  "schema": "mosaico-game-assets/v1",
+  "atlases": [
+    {
+      "config": "atlas.json",
+      "source": "shooter_atlas.png",
+      "output": "shooter.atlas"
+    }
+  ]
+}

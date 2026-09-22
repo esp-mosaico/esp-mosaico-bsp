@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "paths": {
+    "utils_root": {
+      "base": "utils",
+      "path": "."
+    },
+    "bsp_root": {
+      "base": "bsp",
+      "path": "."
+    },
+    "engine_root": {
+      "base": "engine",
+      "path": "."
+    },
+    "bsp_component": {
+      "base": "bsp",
+      "path": "components/esp-mosaico-bsp"
+    },
+    "iris_component": {
+      "base": "esp_iris",
+      "path": "components/esp_iris"
+    }
+  },
+  "files": [
+    {
+      "source": "CMakeLists.txt",
+      "replacements": [
+        {
+          "pattern": "^    set\\(MOSAICO_UTILS_ROOT .*\\)$",
+          "replacement": "    set(MOSAICO_UTILS_ROOT \"${CMAKE_CURRENT_LIST_DIR}/{{utils_root|cmake}}\")"
+        },
+        {
+          "pattern": "^    set\\(MOSAICO_BSP_ROOT .*\\)$",
+          "replacement": "    set(MOSAICO_BSP_ROOT \"${CMAKE_CURRENT_LIST_DIR}/{{bsp_root|cmake}}\")"
+        },
+        {
+          "pattern": "^    set\\(RAYLIB_LITE_ENGINE_ROOT .*\\)$",
+          "replacement": "    set(RAYLIB_LITE_ENGINE_ROOT \"${CMAKE_CURRENT_LIST_DIR}/{{engine_root|cmake}}\")"
+        },
+        {
+          "pattern": "^project\\(raylib_shooter(?=[\\s)])",
+          "replacement": "project({{project_name}}"
+        }
+      ]
+    },
+    {
+      "source": "README.md",
+      "replacements": [
+        {
+          "pattern": "projects/raylib_shooter",
+          "replacement": "{{project_path|shell}}",
+          "count": 3
+        }
+      ]
+    },
+    {
+      "source": "assets_src/atlas.json"
+    },
+    {
+      "source": "assets_src/enemy_assault_source.png"
+    },
+    {
+      "source": "assets_src/enemy_scout_source.png"
+    },
+    {
+      "source": "assets_src/enemy_tank_source.png"
+    },
+    {
+      "source": "assets_src/game_assets.json"
+    },
+    {
+      "source": "assets_src/player_source.png"
+    },
+    {
+      "source": "assets_src/prepare_sprites.py"
+    },
+    {
+      "source": "game.sim.json"
+    },
+    {
+      "source": "main/CMakeLists.txt"
+    },
+    {
+      "source": "main/Kconfig.projbuild"
+    },
+    {
+      "source": "main/game_audio.c"
+    },
+    {
+      "source": "main/game_audio.h"
+    },
+    {
+      "source": "main/game_module.c"
+    },
+    {
+      "source": "main/idf_component.yml",
+      "replacements": [
+        {
+          "pattern": "^    override_path: .*components/esp-mosaico-bsp$",
+          "replacement": "    override_path: {{bsp_component|json}}"
+        },
+        {
+          "pattern": "^    override_path: .*ESP-Iris/components/esp_iris$",
+          "replacement": "    override_path: {{iris_component|json}}"
+        }
+      ]
+    },
+    {
+      "source": "main/main.c"
+    },
+    {
+      "source": "main/make_canvas_png.py"
+    },
+    {
+      "source": "main/raylib_screen_mirror.c"
+    },
+    {
+      "source": "main/raylib_screen_mirror.h"
+    },
+    {
+      "source": "main/scene.json.in"
+    },
+    {
+      "source": "main/shooter_app.c"
+    },
+    {
+      "source": "main/shooter_app.h"
+    },
+    {
+      "source": "main/shooter_game.c"
+    },
+    {
+      "source": "main/shooter_game.h"
+    },
+    {
+      "source": "main/shooter_view.c"
+    },
+    {
+      "source": "main/shooter_view.h"
+    },
+    {
+      "source": "partitions.csv"
+    },
+    {
+      "source": "sdkconfig.application.defaults",
+      "replacements": [
+        {
+          "pattern": "^CONFIG_ESP_IRIS_USB_PRODUCT=\"[^\"\\n]*\"",
+          "replacement": "CONFIG_ESP_IRIS_USB_PRODUCT=\"ESP-Iris Mosaico {{project_name}}\""
+        }
+      ]
+    },
+    {
+      "source": "sdkconfig.defaults"
+    }
+  ]
+}

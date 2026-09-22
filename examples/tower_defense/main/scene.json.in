@@ -1,0 +1,11 @@
+{
+  "screen": "tower_defense",
+  "w": 480,
+  "h": 480,
+  "screen_bg": "#08101B",
+  "objects": [
+    {"type":"container","parent":-1,"x":0,"y":0,"w":480,"h":480,"bg_color":"#08101B"},
+    {"type":"image","parent":0,"x":0,"y":0,"w":480,"h":480,
+     "image":"@CANVAS_IMAGE@","codec":"lossless","bind":"game_canvas"}
+  ]
+}

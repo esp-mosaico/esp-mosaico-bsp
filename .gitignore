@@ -88,3 +88,9 @@ Thumbs.db
 tools/mcp-server/build/
 tools/mcp-server/.pytest_cache/
 catalog/upstream_paths.local.json
+
+**/assets/generated/
+/examples/sky_hop/assets_src/*.wav
+/examples/sky_hop/assets_src/sky_hop_atlas.png
+/examples/raylib_shooter/assets_src/shooter_atlas.png
+**/.codex-runs/

@@ -1,0 +1,20 @@
+{
+  "image": "tower_atlas_source.png",
+  "columns": 4,
+  "rows": 4,
+  "output_cell": 64,
+  "alpha_mode": "binary",
+  "animations": [
+    {"name": "explosion", "frames": ["explosion_0", "explosion_1", "explosion_2"], "frame_ticks": 4}
+  ],
+  "frames": [
+    {"name": "tower_pulse"}, {"name": "tower_rapid"},
+    {"name": "tower_frost"}, {"name": "enemy_drone"},
+    {"name": "enemy_brute"}, {"name": "enemy_scout"},
+    {"name": "projectile_pulse"}, {"name": "projectile_rapid"},
+    {"name": "projectile_frost"}, {"name": "reactor_core"},
+    {"name": "build_pad"}, {"name": "explosion_0"},
+    {"name": "explosion_1"}, {"name": "explosion_2"},
+    {"name": "shield_icon"}, {"name": "coin_icon"}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "screen": "sky_hop",
+  "w": 480,
+  "h": 480,
+  "screen_bg": "#5CBFEC",
+  "objects": [
+    {"type":"container","parent":-1,"x":0,"y":0,"w":480,"h":480,"bg_color":"#5CBFEC"},
+    {"type":"image","parent":0,"x":0,"y":0,"w":480,"h":480,
+     "image":"@CANVAS_IMAGE@","codec":"lossless","bind":"game_canvas"}
+  ]
+}

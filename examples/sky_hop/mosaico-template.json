@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "paths": {
+    "utils_root": {
+      "base": "utils",
+      "path": "."
+    },
+    "bsp_root": {
+      "base": "bsp",
+      "path": "."
+    },
+    "engine_root": {
+      "base": "engine",
+      "path": "."
+    },
+    "bsp_component": {
+      "base": "bsp",
+      "path": "components/esp-mosaico-bsp"
+    },
+    "iris_component": {
+      "base": "esp_iris",
+      "path": "components/esp_iris"
+    }
+  },
+  "files": [
+    {
+      "source": "CMakeLists.txt",
+      "replacements": [
+        {
+          "pattern": "^    set\\(MOSAICO_UTILS_ROOT .*\\)$",
+          "replacement": "    set(MOSAICO_UTILS_ROOT \"${CMAKE_CURRENT_LIST_DIR}/{{utils_root|cmake}}\")"
+        },
+        {
+          "pattern": "^    set\\(MOSAICO_BSP_ROOT .*\\)$",
+          "replacement": "    set(MOSAICO_BSP_ROOT \"${CMAKE_CURRENT_LIST_DIR}/{{bsp_root|cmake}}\")"
+        },
+        {
+          "pattern": "^    set\\(RAYLIB_LITE_ENGINE_ROOT .*\\)$",
+          "replacement": "    set(RAYLIB_LITE_ENGINE_ROOT \"${CMAKE_CURRENT_LIST_DIR}/{{engine_root|cmake}}\")"
+        },
+        {
+          "pattern": "^project\\(sky_hop(?=[\\s)])",
+          "replacement": "project({{project_name}}"
+        }
+      ]
+    },
+    {
+      "source": "README.md",
+      "replacements": [
+        {
+          "pattern": "projects/sky_hop",
+          "replacement": "{{project_path|shell}}",
+          "count": 5
+        }
+      ]
+    },
+    {
+      "source": "assets_src/atlas.json"
+    },
+    {
+      "source": "assets_src/game_assets.json"
+    },
+    {
+      "source": "assets_src/generate_audio.py"
+    },
+    {
+      "source": "assets_src/portrait_hero_source.png"
+    },
+    {
+      "source": "assets_src/prepare_sprites.py"
+    },
+    {
+      "source": "assets_src/sky_hop_sprite_source.png"
+    },
+    {
+      "source": "game.sim.json"
+    },
+    {
+      "source": "main/CMakeLists.txt"
+    },
+    {
+      "source": "main/Kconfig.projbuild"
+    },
+    {
+      "source": "main/game_module.c"
+    },
+    {
+      "source": "main/idf_component.yml",
+      "replacements": [
+        {
+          "pattern": "^    override_path: .*components/esp-mosaico-bsp$",
+          "replacement": "    override_path: {{bsp_component|json}}"
+        },
+        {
+          "pattern": "^    override_path: .*ESP-Iris/components/esp_iris$",
+          "replacement": "    override_path: {{iris_component|json}}"
+        }
+      ]
+    },
+    {
+      "source": "main/main.c"
+    },
+    {
+      "source": "main/make_canvas_png.py"
+    },
+    {
+      "source": "main/platform_game.c"
+    },
+    {
+      "source": "main/platform_game.h"
+    },
+    {
+      "source": "main/raylib_screen_mirror.c"
+    },
+    {
+      "source": "main/raylib_screen_mirror.h"
+    },
+    {
+      "source": "main/scene.json.in"
+    },
+    {
+      "source": "main/sky_hop_app.c"
+    },
+    {
+      "source": "main/sky_hop_app.h"
+    },
+    {
+      "source": "main/sky_hop_save.c"
+    },
+    {
+      "source": "main/sky_hop_save.h"
+    },
+    {
+      "source": "main/sky_hop_view.c"
+    },
+    {
+      "source": "main/sky_hop_view.h"
+    },
+    {
+      "source": "partitions.csv"
+    },
+    {
+      "source": "sdkconfig.application.defaults",
+      "replacements": [
+        {
+          "pattern": "^CONFIG_ESP_IRIS_USB_PRODUCT=\"[^\"\\n]*\"",
+          "replacement": "CONFIG_ESP_IRIS_USB_PRODUCT=\"ESP-Iris Mosaico {{project_name}}\""
+        }
+      ]
+    },
+    {
+      "source": "sdkconfig.defaults"
+    }
+  ]
+}

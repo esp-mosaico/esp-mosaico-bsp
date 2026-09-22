@@ -28,7 +28,8 @@ jobs:
           import json
           from pathlib import Path
 
-          examples = sorted(str(path.parent) for path in Path("examples").glob("*/CMakeLists.txt"))
+          examples = sorted(str(path.parent) for path in Path("examples").glob("*/CMakeLists.txt")
+                            if not (path.parent / "game.sim.json").is_file())
           if not examples:
               raise SystemExit("No ESP-IDF examples found under examples/")
           print(f"examples={json.dumps(examples, separators=(',', ':'))}")

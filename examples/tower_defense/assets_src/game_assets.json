@@ -1,0 +1,25 @@
+{
+  "schema": "mosaico-game-assets/v1",
+  "atlases": [
+    {
+      "config": "atlas.json",
+      "source": "tower_atlas_source.png",
+      "output": "tower.atlas"
+    },
+    {
+      "generator": "terrain",
+      "output": "terrain.atlas"
+    }
+  ],
+  "maps": [
+    {
+      "source": "level01.tmj",
+      "output": "level01.map"
+    }
+  ],
+  "sounds": [
+    {
+      "source": "*.wav"
+    }
+  ]
+}

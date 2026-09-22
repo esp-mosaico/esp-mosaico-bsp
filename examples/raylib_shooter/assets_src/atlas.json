@@ -1,0 +1,13 @@
+{
+  "image": "shooter_atlas.png",
+  "columns": 4,
+  "rows": 1,
+  "output_cell": 64,
+  "alpha_mode": "smooth",
+  "frames": [
+    {"name": "player_ship"},
+    {"name": "enemy_scout"},
+    {"name": "enemy_assault"},
+    {"name": "enemy_tank"}
+  ]
+}

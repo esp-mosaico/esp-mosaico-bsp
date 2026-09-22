@@ -1,0 +1,8 @@
+{
+  "schema": "mosaico-game-sim/v1",
+  "sources": [
+    "main/game_module.c",
+    "main/tower_game.c",
+    "main/tower_view.c"
+  ]
+}
