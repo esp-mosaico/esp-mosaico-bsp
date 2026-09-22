@@ -5,6 +5,8 @@
 
 #include "mosaico_module_interact.h"
 
+#include <inttypes.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,21 +20,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "iot_button.h"
 #include "led_strip.h"
 #include "soc/soc_caps.h"
-
-#if SOC_TOUCH_SENSOR_SUPPORTED
-#include "driver/touch_sens.h"
-#endif
+#include "touch_button.h"
+#include "touch_sensor_lowlevel.h"
 
 static const char *TAG = "mosaico_interact";
 
 #define IR_RMT_RESOLUTION_HZ        1000000
 #define IR_NEC_SYMBOL_MAX           34
 #define LDR_ADC_MAX                 ((1U << SOC_ADC_DIGI_MAX_BITWIDTH) - 1U)
-#define TOUCH_DELTA_DIVISOR         20U
-#define TOUCH_DELTA_OFFSET          300U
-#define TOUCH_ACTIVE_THRESH_RATIO   0.03f
+#define TOUCH_BUTTON_THRESHOLD      500U
 #if CONFIG_IDF_TARGET_ESP32S31
 // Nominal single-ended endpoints from IDF's S31 ADC tests, not voltage calibration.
 #define LDR_S31_ZERO_CODE           2196
@@ -74,34 +73,17 @@ struct mosaico_interact_t {
     rmt_channel_handle_t ir_chan;
     rmt_encoder_handle_t ir_encoder;
     rmt_symbol_word_t ir_symbols[IR_NEC_SYMBOL_MAX];
-#if SOC_TOUCH_SENSOR_SUPPORTED
-    touch_sensor_handle_t touch;
-    touch_channel_handle_t touch_l;
-    touch_channel_handle_t touch_r;
-    bool touch_attached;
-#if (SOC_TOUCH_SENSOR_VERSION == 2 || SOC_TOUCH_SENSOR_VERSION == 3)
-    uint32_t touch_idle_l[TOUCH_SAMPLE_CFG_NUM];
-    uint32_t touch_idle_r[TOUCH_SAMPLE_CFG_NUM];
-    TickType_t touch_hold_l;
-    TickType_t touch_hold_r;
-#endif
-#endif
+    button_handle_t touch_l;
+    button_handle_t touch_r;
+    atomic_bool touch_l_pressed;
+    atomic_bool touch_r_pressed;
 };
 
-/* ESP-IDF touch_sensor_new_controller() is a process-wide singleton
- * (ESP_ERR_INVALID_STATE / "Touch sensor has been allocated"). Left and
- * right Interaction boards must share one controller and add their own
- * channels (L: GPIO13/12 -> CH7/6, R: GPIO11/10 -> CH5/4).
- */
 static StaticSemaphore_t s_hw_lock_storage;
 static SemaphoreHandle_t s_hw_lock;
 static portMUX_TYPE s_hw_lock_init_mux = portMUX_INITIALIZER_UNLOCKED;
-#if SOC_TOUCH_SENSOR_SUPPORTED && (SOC_TOUCH_SENSOR_VERSION == 2 || SOC_TOUCH_SENSOR_VERSION == 3)
-static touch_sensor_handle_t s_touch;
-static int s_touch_users;
-static bool s_touch_enabled;
-static bool s_touch_scanning;
-#endif
+static mosaico_interact_handle_t s_touch_handles[MOSAICO_MODULE_MGR_SLOT_COUNT];
+static bool s_touch_lowlevel_created;
 #define INTERACT_ADC_UNIT_SLOTS 2
 static adc_oneshot_unit_handle_t s_adc[INTERACT_ADC_UNIT_SLOTS];
 static int s_adc_refs[INTERACT_ADC_UNIT_SLOTS];
@@ -196,304 +178,182 @@ static esp_err_t configure_gpio_keys(const mosaico_interact_hw_config_t *hw)
     return ESP_OK;
 }
 
-#if SOC_TOUCH_SENSOR_SUPPORTED && (SOC_TOUCH_SENSOR_VERSION == 2 || SOC_TOUCH_SENSOR_VERSION == 3)
-static void touch_hub_pause(void)
+static void touch_event_cb(void *button, void *user_data)
 {
-    if (!s_touch) {
-        return;
-    }
-    if (s_touch_scanning) {
-        (void)touch_sensor_stop_continuous_scanning(s_touch);
-        s_touch_scanning = false;
-    }
-    if (s_touch_enabled) {
-        (void)touch_sensor_disable(s_touch);
-        s_touch_enabled = false;
-    }
+    atomic_bool *pressed = user_data;
+    atomic_store_explicit(pressed, iot_button_get_event(button) == BUTTON_PRESS_DOWN, memory_order_relaxed);
 }
 
-static esp_err_t touch_hub_resume(void)
+static esp_err_t get_touch_channels(mosaico_interact_handle_t handle, uint32_t channels[2])
 {
-    if (!s_touch || s_touch_scanning) {
-        return ESP_OK;
-    }
-    ESP_RETURN_ON_ERROR(touch_sensor_enable(s_touch), TAG, "enable touch failed");
-    s_touch_enabled = true;
-    ESP_RETURN_ON_ERROR(touch_sensor_start_continuous_scanning(s_touch), TAG,
-                        "start touch scanning failed");
-    s_touch_scanning = true;
+    const int chan_l = gpio_to_touch_channel(handle->hardware.key_l_io);
+    const int chan_r = gpio_to_touch_channel(handle->hardware.key_r_io);
+    ESP_RETURN_ON_FALSE(chan_l >= 0 && chan_r >= 0, ESP_ERR_NOT_SUPPORTED, TAG, "KEY GPIOs are not touch channels");
+    channels[0] = chan_l;
+    channels[1] = chan_r;
     return ESP_OK;
 }
 
-static void drop_handle_touch_channels(mosaico_interact_handle_t handle)
+static void delete_touch_buttons(mosaico_interact_handle_t handle)
 {
     if (handle->touch_l) {
-        (void)touch_sensor_del_channel(handle->touch_l);
+        esp_err_t ret = iot_button_delete(handle->touch_l);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Delete KEY_L touch button failed: %s", esp_err_to_name(ret));
+        }
         handle->touch_l = NULL;
     }
     if (handle->touch_r) {
-        (void)touch_sensor_del_channel(handle->touch_r);
+        esp_err_t ret = iot_button_delete(handle->touch_r);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Delete KEY_R touch button failed: %s", esp_err_to_name(ret));
+        }
         handle->touch_r = NULL;
     }
+    atomic_store_explicit(&handle->touch_l_pressed, false, memory_order_relaxed);
+    atomic_store_explicit(&handle->touch_r_pressed, false, memory_order_relaxed);
+}
+
+static esp_err_t delete_touch_lowlevel(void)
+{
+    esp_err_t first_error = touch_sensor_lowlevel_stop();
+    if (first_error != ESP_OK) {
+        ESP_LOGE(TAG, "Stop touch lowlevel failed: %s", esp_err_to_name(first_error));
+    }
+    esp_err_t ret = touch_sensor_lowlevel_delete();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Delete touch lowlevel failed: %s", esp_err_to_name(ret));
+    } else {
+        s_touch_lowlevel_created = false;
+    }
+    return first_error != ESP_OK ? first_error : ret;
+}
+
+static esp_err_t create_touch_button(uint32_t channel, atomic_bool *pressed, button_handle_t *button)
+{
+    const button_config_t button_config = {0};
+    const button_touch_config_t touch_config = {
+        .touch_channel = channel,
+        .channel_threshold = TOUCH_BUTTON_THRESHOLD,
+        .skip_lowlevel_init = true,
+    };
+    ESP_RETURN_ON_ERROR(iot_button_new_touch_button_device(&button_config, &touch_config, button), TAG, "Create touch button failed");
+    ESP_RETURN_ON_ERROR(iot_button_register_cb(*button, BUTTON_PRESS_DOWN, NULL, touch_event_cb, pressed), TAG, "Register touch press failed");
+    return iot_button_register_cb(*button, BUTTON_PRESS_UP, NULL, touch_event_cb, pressed);
+}
+
+static esp_err_t create_touch_buttons(mosaico_interact_handle_t handle)
+{
+    uint32_t channels[2];
+    ESP_RETURN_ON_ERROR(get_touch_channels(handle, channels), TAG, "Get touch channels failed");
+    ESP_RETURN_ON_ERROR(create_touch_button(channels[0], &handle->touch_l_pressed, &handle->touch_l), TAG, "Create KEY_L failed");
+    ESP_RETURN_ON_ERROR(create_touch_button(channels[1], &handle->touch_r_pressed, &handle->touch_r), TAG, "Create KEY_R failed");
+    return ESP_OK;
+}
+
+static esp_err_t rebuild_touch_locked(void)
+{
+    uint32_t channels[MOSAICO_MODULE_MGR_SLOT_COUNT * 2U] = {0};
+    uint32_t channel_count = 0;
+    for (size_t i = 0; i < MOSAICO_MODULE_MGR_SLOT_COUNT; ++i) {
+        mosaico_interact_handle_t handle = s_touch_handles[i];
+        if (!handle) {
+            continue;
+        }
+        delete_touch_buttons(handle);
+        uint32_t handle_channels[2];
+        ESP_RETURN_ON_ERROR(get_touch_channels(handle, handle_channels), TAG, "Get touch channels failed");
+        channels[channel_count++] = handle_channels[0];
+        channels[channel_count++] = handle_channels[1];
+    }
+
+    if (s_touch_lowlevel_created) {
+        ESP_RETURN_ON_ERROR(delete_touch_lowlevel(), TAG, "Reset touch lowlevel failed");
+    }
+    if (channel_count == 0) {
+        return ESP_OK;
+    }
+
+    touch_lowlevel_config_t config = {
+        .channel_num = channel_count,
+        .channel_list = channels,
+    };
+    ESP_RETURN_ON_ERROR(touch_sensor_lowlevel_create(&config), TAG, "Create touch lowlevel failed");
+    s_touch_lowlevel_created = true;
+
+    esp_err_t ret = ESP_OK;
+    for (size_t i = 0; i < MOSAICO_MODULE_MGR_SLOT_COUNT; ++i) {
+        if (s_touch_handles[i]) {
+            ret = create_touch_buttons(s_touch_handles[i]);
+            if (ret != ESP_OK) {
+                goto fail;
+            }
+        }
+    }
+    ESP_GOTO_ON_ERROR(touch_sensor_lowlevel_start(), fail, TAG, "Start touch lowlevel failed");
+    ESP_LOGI(TAG, "Touch lowlevel rebuilt with %" PRIu32 " channels", channel_count);
+    return ESP_OK;
+
+fail:
+    for (size_t i = 0; i < MOSAICO_MODULE_MGR_SLOT_COUNT; ++i) {
+        if (s_touch_handles[i]) {
+            delete_touch_buttons(s_touch_handles[i]);
+        }
+    }
+    if (s_touch_lowlevel_created) {
+        (void)delete_touch_lowlevel();
+    }
+    return ret;
 }
 
 static void stop_touch(mosaico_interact_handle_t handle)
 {
     hw_lock();
-    if (s_touch) {
-        touch_hub_pause();
-        drop_handle_touch_channels(handle);
-        if (handle->touch_attached) {
-            s_touch_users--;
-            handle->touch_attached = false;
-        }
-        if (s_touch_users <= 0) {
-            (void)touch_sensor_del_controller(s_touch);
-            s_touch = NULL;
-            s_touch_users = 0;
-            s_touch_enabled = false;
-            s_touch_scanning = false;
-        } else {
-            (void)touch_hub_resume();
-        }
-    } else {
-        handle->touch_l = NULL;
-        handle->touch_r = NULL;
-        handle->touch_attached = false;
+    const size_t index = handle->slot;
+    const bool attached = s_touch_handles[index] == handle;
+    if (attached) {
+        s_touch_handles[index] = NULL;
     }
-    handle->touch = NULL;
-    handle->touch_hold_l = 0;
-    handle->touch_hold_r = 0;
+    delete_touch_buttons(handle);
+    if (attached) {
+        esp_err_t ret = rebuild_touch_locked();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Rebuild touch after detach failed: %s", esp_err_to_name(ret));
+        }
+    }
     hw_unlock();
-}
-
-static void touch_reset_benchmark(touch_channel_handle_t chan)
-{
-#if SOC_TOUCH_SUPPORT_BENCHMARK
-    if (!chan) {
-        return;
-    }
-    const touch_chan_benchmark_config_t cfg = {
-        .do_reset = true,
-    };
-    (void)touch_channel_config_benchmark(chan, &cfg);
-#else
-    (void)chan;
-#endif
-}
-
-static void capture_touch_idle(touch_channel_handle_t chan, uint32_t *idle)
-{
-    memset(idle, 0, sizeof(uint32_t) * TOUCH_SAMPLE_CFG_NUM);
-    if (!chan) {
-        return;
-    }
-#if SOC_TOUCH_SUPPORT_BENCHMARK
-    if (touch_channel_read_data(chan, TOUCH_CHAN_DATA_TYPE_BENCHMARK, idle) == ESP_OK) {
-        return;
-    }
-#endif
-    (void)touch_channel_read_data(chan, TOUCH_CHAN_DATA_TYPE_SMOOTH, idle);
-}
-
-static bool touch_delta_over(const uint32_t *high, const uint32_t *low)
-{
-    for (int i = 0; i < TOUCH_SAMPLE_CFG_NUM; ++i) {
-        const uint32_t thresh = low[i] / TOUCH_DELTA_DIVISOR + TOUCH_DELTA_OFFSET;
-        if (high[i] > low[i] + thresh) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool read_touch_pad(touch_channel_handle_t chan, uint32_t *idle, TickType_t *hold_since)
-{
-    uint32_t smooth[TOUCH_SAMPLE_CFG_NUM] = {0};
-    if (!chan ||
-        touch_channel_read_data(chan, TOUCH_CHAN_DATA_TYPE_SMOOTH, smooth) != ESP_OK) {
-        *hold_since = 0;
-        return false;
-    }
-
-    const TickType_t now = xTaskGetTickCount();
-    if (touch_delta_over(smooth, idle)) {
-        if (*hold_since == 0) {
-            *hold_since = now;
-        }
-        // A sustained mechanical press must remain active until release.
-        return true;
-    }
-
-    *hold_since = 0;
-    if (touch_delta_over(idle, smooth)) {
-        /* Hardware benchmark climbed during a press; snap back after release. */
-        memcpy(idle, smooth, sizeof(uint32_t) * TOUCH_SAMPLE_CFG_NUM);
-        touch_reset_benchmark(chan);
-    }
-    return false;
 }
 
 static esp_err_t start_touch(mosaico_interact_handle_t handle)
 {
-    const int chan_l = gpio_to_touch_channel(handle->hardware.key_l_io);
-    const int chan_r = gpio_to_touch_channel(handle->hardware.key_r_io);
-    ESP_RETURN_ON_FALSE(chan_l >= 0 && chan_r >= 0, ESP_ERR_NOT_SUPPORTED, TAG,
-                        "KEY GPIOs are not touch channels");
+    uint32_t channels[2];
+    ESP_RETURN_ON_ERROR(get_touch_channels(handle, channels), TAG, "Get touch channels failed");
 
     /* GPIO pull-up leftover after Key mode keeps the analog pad biased. */
     reset_key_pads(&handle->hardware);
     vTaskDelay(pdMS_TO_TICKS(20));
 
-#if SOC_TOUCH_SENSOR_VERSION == 2
-    touch_sensor_sample_config_t sample_cfg[] = {
-        TOUCH_SENSOR_V2_DEFAULT_SAMPLE_CONFIG(500, TOUCH_VOLT_LIM_L_0V5, TOUCH_VOLT_LIM_H_2V2),
-    };
-    touch_channel_config_t chan_cfg = {
-        .active_thresh = {4000},
-        .charge_speed = TOUCH_CHARGE_SPEED_7,
-        .init_charge_volt = TOUCH_INIT_CHARGE_VOLT_DEFAULT,
-    };
-#else
-    touch_sensor_sample_config_t sample_cfg[] = {
-        TOUCH_SENSOR_V3_DEFAULT_SAMPLE_CONFIG2(3, 29, 8, 3),
-        TOUCH_SENSOR_V3_DEFAULT_SAMPLE_CONFIG2(2, 88, 31, 7),
-        TOUCH_SENSOR_V3_DEFAULT_SAMPLE_CONFIG2(3, 10, 31, 7),
-    };
-    touch_channel_config_t chan_cfg = {
-        .active_thresh = {2000, 5000, 10000},
-    };
-#endif
-
     hw_lock();
+    const size_t index = handle->slot;
+    if (s_touch_handles[index]) {
+        hw_unlock();
+        return ESP_ERR_INVALID_STATE;
+    }
 
-    esp_err_t ret = ESP_OK;
-    if (!s_touch) {
-        touch_sensor_config_t sens_cfg =
-            TOUCH_SENSOR_DEFAULT_BASIC_CONFIG(sizeof(sample_cfg) / sizeof(sample_cfg[0]),
-                                              sample_cfg);
-        ret = touch_sensor_new_controller(&sens_cfg, &s_touch);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "create touch controller failed");
-            goto fail;
+    s_touch_handles[index] = handle;
+    esp_err_t ret = rebuild_touch_locked();
+    if (ret != ESP_OK) {
+        s_touch_handles[index] = NULL;
+        esp_err_t restore_ret = rebuild_touch_locked();
+        if (restore_ret != ESP_OK) {
+            ESP_LOGE(TAG, "Restore existing touch buttons failed: %s", esp_err_to_name(restore_ret));
         }
     } else {
-        touch_hub_pause();
-        ESP_LOGI(TAG, "Reuse shared touch controller for slot=%s (users=%d)",
-                 mosaico_module_mgr_slot_to_name(handle->slot), s_touch_users);
-    }
-
-    handle->touch = s_touch;
-    ret = touch_sensor_new_channel(s_touch, chan_l, &chan_cfg, &handle->touch_l);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "create KEY_L touch channel failed");
-        goto fail;
-    }
-    ret = touch_sensor_new_channel(s_touch, chan_r, &chan_cfg, &handle->touch_r);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "create KEY_R touch channel failed");
-        goto fail;
-    }
-
-    if (s_touch_users == 0) {
-        touch_sensor_filter_config_t filter_cfg = TOUCH_SENSOR_DEFAULT_FILTER_CONFIG();
-        ret = touch_sensor_config_filter(s_touch, &filter_cfg);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "config touch filter failed");
-            goto fail;
-        }
-    }
-
-    ret = touch_sensor_enable(s_touch);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "enable touch failed");
-        goto fail;
-    }
-    s_touch_enabled = true;
-    for (int i = 0; i < 3; ++i) {
-        ret = touch_sensor_trigger_oneshot_scanning(s_touch, 2000);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "touch oneshot scan failed");
-            goto fail;
-        }
-    }
-    ret = touch_sensor_disable(s_touch);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "disable touch failed");
-        goto fail;
-    }
-    s_touch_enabled = false;
-
-#if SOC_TOUCH_SUPPORT_BENCHMARK
-    uint32_t benchmark[TOUCH_SAMPLE_CFG_NUM] = {0};
-    touch_channel_handle_t chans[] = {handle->touch_l, handle->touch_r};
-    for (size_t i = 0; i < 2; ++i) {
-        ret = touch_channel_read_data(chans[i], TOUCH_CHAN_DATA_TYPE_BENCHMARK,
-                                      benchmark);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "read touch benchmark failed");
-            goto fail;
-        }
-        touch_channel_config_t tuned = chan_cfg;
-        for (int j = 0; j < TOUCH_SAMPLE_CFG_NUM; ++j) {
-            tuned.active_thresh[j] = (uint32_t)(benchmark[j] * TOUCH_ACTIVE_THRESH_RATIO);
-        }
-        ret = touch_sensor_reconfig_channel(chans[i], &tuned);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "reconfig touch channel failed");
-            goto fail;
-        }
-    }
-#endif
-
-    ret = touch_hub_resume();
-    if (ret != ESP_OK) {
-        goto fail;
-    }
-
-    capture_touch_idle(handle->touch_l, handle->touch_idle_l);
-    capture_touch_idle(handle->touch_r, handle->touch_idle_r);
-    handle->touch_hold_l = 0;
-    handle->touch_hold_r = 0;
-    handle->touch_attached = true;
-    s_touch_users++;
-    ESP_LOGI(TAG, "Touch input on KEY_L=CH%d KEY_R=CH%d (shared users=%d)",
-             chan_l, chan_r, s_touch_users);
-    hw_unlock();
-    return ESP_OK;
-
-fail:
-    touch_hub_pause();
-    drop_handle_touch_channels(handle);
-    handle->touch = NULL;
-    handle->touch_attached = false;
-    if (s_touch_users <= 0) {
-        if (s_touch) {
-            (void)touch_sensor_del_controller(s_touch);
-            s_touch = NULL;
-        }
-        s_touch_enabled = false;
-        s_touch_scanning = false;
-    } else {
-        (void)touch_hub_resume();
+        ESP_LOGI(TAG, "Touch buttons on KEY_L=CH%" PRIu32 " KEY_R=CH%" PRIu32, channels[0], channels[1]);
     }
     hw_unlock();
     return ret;
 }
-
-#else
-static void stop_touch(mosaico_interact_handle_t handle)
-{
-    (void)handle;
-}
-
-static esp_err_t start_touch(mosaico_interact_handle_t handle)
-{
-    (void)handle;
-    ESP_LOGW(TAG, "Touch sensor is not available on this IDF/target; stay on GPIO keys");
-    return ESP_ERR_NOT_SUPPORTED;
-}
-#endif
 
 static esp_err_t apply_button_mode(mosaico_interact_handle_t handle, mosaico_interact_button_mode_t mode)
 {
@@ -533,15 +393,8 @@ static esp_err_t apply_button_mode(mosaico_interact_handle_t handle, mosaico_int
 static void read_keys(mosaico_interact_handle_t handle, bool *key_l, bool *key_r)
 {
     if (handle->active_input == MOSAICO_INTERACT_BUTTON_MODE_TOUCH) {
-#if SOC_TOUCH_SENSOR_SUPPORTED && (SOC_TOUCH_SENSOR_VERSION == 2 || SOC_TOUCH_SENSOR_VERSION == 3)
-        hw_lock();
-        *key_l = read_touch_pad(handle->touch_l, handle->touch_idle_l, &handle->touch_hold_l);
-        *key_r = read_touch_pad(handle->touch_r, handle->touch_idle_r, &handle->touch_hold_r);
-        hw_unlock();
-#else
-        *key_l = false;
-        *key_r = false;
-#endif
+        *key_l = atomic_load_explicit(&handle->touch_l_pressed, memory_order_relaxed);
+        *key_r = atomic_load_explicit(&handle->touch_r_pressed, memory_order_relaxed);
         return;
     }
 
@@ -810,6 +663,8 @@ esp_err_t mosaico_interact_open(const mosaico_interact_config_t *config, mosaico
                         "allocate interact context failed");
     handle->config = active;
     handle->active_input = MOSAICO_INTERACT_BUTTON_MODE_GPIO;
+    atomic_init(&handle->touch_l_pressed, false);
+    atomic_init(&handle->touch_r_pressed, false);
 
     handle->lock = xSemaphoreCreateMutex();
     if (!handle->lock) {
