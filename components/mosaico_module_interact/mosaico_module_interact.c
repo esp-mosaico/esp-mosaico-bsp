@@ -196,6 +196,16 @@ static esp_err_t get_touch_channels(mosaico_interact_handle_t handle, uint32_t c
 
 static void delete_touch_buttons(mosaico_interact_handle_t handle)
 {
+    bool resume_timer = false;
+    if (handle->touch_l || handle->touch_r) {
+        esp_err_t ret = iot_button_stop();
+        if (ret == ESP_OK) {
+            resume_timer = true;
+            vTaskDelay(1);
+        } else if (ret != ESP_ERR_INVALID_STATE) {
+            ESP_LOGE(TAG, "Stop button timer failed: %s", esp_err_to_name(ret));
+        }
+    }
     if (handle->touch_l) {
         esp_err_t ret = iot_button_delete(handle->touch_l);
         if (ret != ESP_OK) {
@@ -212,6 +222,12 @@ static void delete_touch_buttons(mosaico_interact_handle_t handle)
     }
     atomic_store_explicit(&handle->touch_l_pressed, false, memory_order_relaxed);
     atomic_store_explicit(&handle->touch_r_pressed, false, memory_order_relaxed);
+    if (resume_timer) {
+        esp_err_t ret = iot_button_resume();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Resume button timer failed: %s", esp_err_to_name(ret));
+        }
+    }
 }
 
 static esp_err_t delete_touch_lowlevel(void)

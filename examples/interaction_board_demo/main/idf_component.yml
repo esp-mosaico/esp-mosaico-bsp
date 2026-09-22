@@ -1,0 +1,9 @@
+dependencies:
+  idf:
+    version: ">=6.2"
+
+  esp-mosaico-bsp:
+    path: ../../../components/esp-mosaico-bsp
+
+  mosaico_module_interact:
+    path: ../../../components/mosaico_module_interact
