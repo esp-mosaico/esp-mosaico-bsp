@@ -1,0 +1,11 @@
+{
+  "screen": "raylib_shooter",
+  "w": 480,
+  "h": 480,
+  "screen_bg": "#050A1C",
+  "objects": [
+    {"type":"container","parent":-1,"x":0,"y":0,"w":480,"h":480,"bg_color":"#050A1C"},
+    {"type":"image","parent":0,"x":0,"y":0,"w":480,"h":480,
+     "image":"@CANVAS_IMAGE@","codec":"lossless","bind":"game_canvas"}
+  ]
+}

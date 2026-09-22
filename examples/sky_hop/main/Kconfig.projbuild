@@ -1,0 +1,20 @@
+menu "Sky Hop benchmark"
+
+config SKY_HOP_BENCHMARK_MODE
+    bool "Run deterministic performance replay"
+    default n
+    help
+        Starts and drives Sky Hop from a fixed input sequence. Use this only
+        for repeatable device display benchmarks, not normal gameplay.
+
+config SKY_HOP_TE_COMPOSE_BUFFERS
+    int "TE compose buffer count"
+    range 1 2
+    default 1
+
+config SKY_HOP_DRAWBUF_LINES
+    int "Display draw-buffer lines"
+    range 10 80
+    default 34
+
+endmenu

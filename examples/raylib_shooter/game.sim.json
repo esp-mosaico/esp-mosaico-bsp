@@ -1,0 +1,10 @@
+{
+  "schema": "mosaico-game-sim/v1",
+  "asset_prepare": ["assets_src/prepare_sprites.py"],
+  "tick_hz": 30,
+  "sources": [
+    "main/game_module.c",
+    "main/shooter_game.c",
+    "main/shooter_view.c"
+  ]
+}

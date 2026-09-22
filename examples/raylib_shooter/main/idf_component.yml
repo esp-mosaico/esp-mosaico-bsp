@@ -1,0 +1,12 @@
+dependencies:
+  # Public engine/runtime versions are platform ABI pins.
+  idf: ">=6.2"
+  georgik/raylib: "==6.0.0~2"
+  espressif/esp-gsp: "==1.4.0"
+  espressif/esp_mmap_assets: "^2.0.0"
+  esp-mosaico-bsp:
+    version: "*"
+    override_path: ../../../components/esp-mosaico-bsp
+  lvgl/lvgl:
+    # Keep esp_lvgl_adapter compatible, as in the Hello World reference.
+    version: "==9.5.0"

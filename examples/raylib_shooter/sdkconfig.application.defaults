@@ -1,0 +1,6 @@
+# Keep the OTA writer only in the retained factory Recovery image. The normal
+# application exposes the enter-Recovery RPC through iris_ota_support_start().
+# CONFIG_ESP_IRIS_OTA is not set
+CONFIG_ESP_IRIS_USB_PRODUCT="ESP-Iris Mosaico Raylib Shooter"
+# CONFIG_GET_STARTED_AUTO_ACCEPT is not set
+CONFIG_MOSAICO_GAME_DIAGNOSTIC_IRIS_ONLY=n

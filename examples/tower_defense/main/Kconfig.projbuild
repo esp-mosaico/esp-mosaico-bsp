@@ -1,0 +1,21 @@
+menu "Mosaico Game OTA"
+
+config GET_STARTED_RECOVERY
+    bool
+    default n
+
+config GET_STARTED_AUTO_ACCEPT
+    bool "Automatically accept a pending OTA image"
+    default n
+
+config GET_STARTED_ACCEPT_DELAY_MS
+    int "Automatic acceptance delay (milliseconds)"
+    range 1000 30000
+    default 3000
+    depends on GET_STARTED_AUTO_ACCEPT
+
+config MOSAICO_GAME_DIAGNOSTIC_IRIS_ONLY
+    bool "Boot only the ESP-Iris management plane"
+    default n
+
+endmenu

@@ -1,0 +1,27 @@
+{
+  "image": "sky_hop_atlas.png",
+  "columns": 4,
+  "rows": 2,
+  "output_cell": 64,
+  "alpha_mode": "binary",
+  "animations": [
+    {"name": "hero_run", "frames": ["hero_idle", "hero_run"], "frame_ticks": 5}
+  ],
+  "frames": [
+    {"name": "hero_idle"}, {"name": "hero_run"},
+    {"name": "hero_jump"}, {"name": "enemy_beetle"},
+    {"name": "coin"}, {"name": "terrain"},
+    {"name": "finish_flag"}, {"name": "sparkle"}
+  ],
+  "variants": [
+    {"name": "hero_idle_native", "source": "hero_idle", "width": 58, "height": 64},
+    {"name": "hero_run_native", "source": "hero_run", "width": 58, "height": 64},
+    {"name": "hero_jump_native", "source": "hero_jump", "width": 58, "height": 64},
+    {"name": "enemy_beetle_native", "source": "enemy_beetle", "width": 44, "height": 44},
+    {"name": "coin_25", "source": "coin", "width": 25, "height": 25},
+    {"name": "coin_27", "source": "coin", "width": 27, "height": 27},
+    {"name": "coin_29", "source": "coin", "width": 29, "height": 29},
+    {"name": "terrain_native", "source": "terrain", "width": 50, "height": 50},
+    {"name": "finish_flag_native", "source": "finish_flag", "width": 70, "height": 98}
+  ]
+}

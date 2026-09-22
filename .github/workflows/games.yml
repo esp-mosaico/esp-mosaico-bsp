@@ -1,0 +1,58 @@
+name: Game examples
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  host:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+      - run: python -m pip install Pillow
+      - name: Resolve Host dependencies from the BSP declaration
+        run: cmake -S tools/game-dependencies -B build-game-deps
+      - run: python -m unittest discover -s tests/games -v
+      - run: python -m unittest discover -s tests -v
+  firmware:
+    # Exercise the documented standalone build on PRs as well as manual runs.
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        game: [sky_hop, tower_defense, raylib_shooter]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: espressif/esp-idf
+          ref: 7b9cc1ac79f865983f59bb8ff3ff43eb74ff1dbe
+          submodules: recursive
+          path: .idf/esp-idf
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+      - name: Install pinned ESP-IDF tools
+        run: |
+          export IDF_PATH="$GITHUB_WORKSPACE/.idf/esp-idf"
+          "$IDF_PATH/install.sh" all
+          source "$IDF_PATH/export.sh"
+          python -m pip install Pillow
+      - name: Build from the standalone BSP checkout
+        run: |
+          export IDF_PATH="$GITHUB_WORKSPACE/.idf/esp-idf"
+          source "$IDF_PATH/export.sh"
+          idf.py --preview -C "examples/${{ matrix.game }}" -DIDF_TARGET=esp32s31 build
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: game-${{ matrix.game }}-logs
+          path: examples/${{ matrix.game }}/build/log/

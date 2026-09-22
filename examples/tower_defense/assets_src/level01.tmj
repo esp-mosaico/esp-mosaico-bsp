@@ -1,0 +1,43 @@
+{
+  "type": "map", "orientation": "orthogonal", "infinite": false,
+  "width": 15, "height": 10, "tilewidth": 32, "tileheight": 32,
+  "tileset": "terrain.atlas",
+  "layers": [
+    {"type":"tilelayer","name":"terrain","width":15,"height":10,"data":[
+      1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+      1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+      2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,
+      1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,
+      1,1,1,1,2,2,2,2,2,2,2,2,1,1,1,
+      1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,
+      1,1,1,2,2,2,2,2,2,2,2,2,1,1,1,
+      1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,
+      1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,
+      1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]},
+    {"type":"tilelayer","name":"collision","width":15,"height":10,"visible":false,"data":[
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+      1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,
+      0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,
+      0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,
+      0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,
+      0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,
+      0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,
+      0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+    {"type":"objectgroup","name":"gameplay","objects":[
+      {"name":"enemy_path","x":-18,"y":104,"width":0,"height":0,
+       "polyline":[{"x":0,"y":0},{"x":144,"y":0},{"x":144,"y":86},{"x":372,"y":86},{"x":372,"y":174},{"x":112,"y":174},{"x":112,"y":256},{"x":516,"y":256}]},
+      {"name":"pad_0","x":58,"y":154,"width":48,"height":48,"properties":[{"name":"flags","value":1}]},
+      {"name":"pad_1","x":195,"y":130,"width":48,"height":48,"properties":[{"name":"flags","value":1}]},
+      {"name":"pad_2","x":286,"y":130,"width":48,"height":48,"properties":[{"name":"flags","value":1}]},
+      {"name":"pad_3","x":414,"y":218,"width":48,"height":48,"properties":[{"name":"flags","value":1}]},
+      {"name":"pad_4","x":286,"y":322,"width":48,"height":48,"properties":[{"name":"flags","value":1}]},
+      {"name":"pad_5","x":202,"y":242,"width":48,"height":48,"properties":[{"name":"flags","value":1}]},
+      {"name":"pad_6","x":42,"y":322,"width":48,"height":48,"properties":[{"name":"flags","value":1}]},
+      {"name":"pad_7","x":176,"y":356,"width":48,"height":48,"properties":[{"name":"flags","value":1}]},
+      {"name":"pad_8","x":410,"y":318,"width":48,"height":48,"properties":[{"name":"flags","value":1}]},
+      {"name":"reactor","x":467,"y":354,"width":52,"height":52,"properties":[{"name":"flags","value":2}]}
+    ]}
+  ]
+}
