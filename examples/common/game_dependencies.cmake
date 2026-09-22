@@ -1,6 +1,8 @@
 # Example-owned, pinned dependencies. Never search adjacent repositories.
 include_guard(GLOBAL)
 include(FetchContent)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_LIST_DIR}/game_dependencies.json")
 file(READ "${CMAKE_CURRENT_LIST_DIR}/game_dependencies.json" _mosaico_game_lock)
 
 function(_mosaico_game_dependency name variable required_file)

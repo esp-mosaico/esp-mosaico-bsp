@@ -64,6 +64,20 @@ class DependencyResolutionTests(unittest.TestCase):
             shutil.rmtree(checkout)
         self.configure("-DFETCHCONTENT_UPDATES_DISCONNECTED=ON")
 
+    def test_build_reconfigures_when_the_pin_changes(self):
+        self.configure()
+        checkout = self.checkouts["engine"]
+        (checkout / "cmake/mosaico_game_sdk.cmake").write_text("# Updated dependency\n")
+        self.git(checkout, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                 "-c", "commit.gpgsign=false", "commit", "-qam", "new pin")
+        revision = self.git(checkout, "rev-parse", "HEAD").strip()
+        self.lock["engine"]["revision"] = revision
+        (self.source / "game_dependencies.json").write_text(json.dumps(self.lock))
+        result = subprocess.run(["cmake", "--build", str(self.build)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        resolved = (self.build / "resolved.txt").read_text().splitlines()[0]
+        self.assertEqual(self.git(resolved, "rev-parse", "HEAD").strip(), revision)
+
     def test_explicit_checkouts_do_not_fetch(self):
         (self.source / "game_dependencies.json").write_text("{}")
         self.configure("-DRAYLIB_LITE_ENGINE_ROOT=" + str(self.checkouts["engine"]),
