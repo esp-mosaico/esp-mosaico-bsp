@@ -31,6 +31,8 @@
 
 #define PREVIEW_WIDTH              BSP_LCD_H_RES
 #define PREVIEW_HEIGHT             BSP_LCD_V_RES
+/* 640 -> 480 is an exact 3/4 PPA scale step. */
+#define PREVIEW_CROP_SIZE          640
 #define PREVIEW_BUFFER_ALIGNMENT   128
 #define CAPTURE_FAILURE_LIMIT      3
 #define CAMERA_RETRY_DELAY_MS      500
@@ -412,9 +414,9 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
         frame->pixel_format == V4L2_PIX_FMT_UYVY,
         ESP_ERR_NOT_SUPPORTED, TAG,
         "unsupported camera format 0x%08" PRIx32, frame->pixel_format);
-    const uint32_t crop_size = align_down_even(frame->width < frame->height ? frame->width : frame->height);
-    ESP_RETURN_ON_FALSE(crop_size > 0, ESP_ERR_INVALID_SIZE, TAG, "invalid camera frame size: %" PRIu32 "x%" PRIu32,
-                        frame->width, frame->height);
+    ESP_RETURN_ON_FALSE(frame->width >= PREVIEW_CROP_SIZE && frame->height >= PREVIEW_CROP_SIZE, ESP_ERR_INVALID_SIZE,
+                        TAG, "camera frame is smaller than crop: %" PRIu32 "x%" PRIu32, frame->width, frame->height);
+    const uint32_t crop_size = PREVIEW_CROP_SIZE;
     const uint32_t bytes_per_line = frame->bytes_per_line ? frame->bytes_per_line : frame->width * 2U;
     ESP_RETURN_ON_FALSE((bytes_per_line % 2U) == 0, ESP_ERR_INVALID_SIZE, TAG, "camera stride is not pixel aligned");
 
