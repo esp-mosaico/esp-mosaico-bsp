@@ -921,7 +921,18 @@ esp_err_t mosaico_camera_get_frame(mosaico_camera_handle_t camera,
         return ESP_ERR_INVALID_RESPONSE;
     }
 
-    const size_t frame_size = buffer.bytesused ? buffer.bytesused : camera->buffer_lengths[buffer.index];
+    if ((buffer.flags & V4L2_BUF_FLAG_ERROR) || buffer.bytesused == 0) {
+        const esp_err_t queue_ret = camera_ioctl(camera->fd, VIDIOC_QBUF, &buffer, "VIDIOC_QBUF");
+        ESP_LOGD(TAG, "Discard invalid frame index=%" PRIu32 " flags=0x%08" PRIx32 " bytes=%" PRIu32,
+                 buffer.index, buffer.flags, buffer.bytesused);
+        if (queue_ret != ESP_OK) {
+            ESP_LOGE(TAG, "Requeue invalid frame failed: %s", esp_err_to_name(queue_ret));
+        }
+        xSemaphoreGive(camera->lock);
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    const size_t frame_size = buffer.bytesused;
     if (frame_size > camera->buffer_lengths[buffer.index]) {
         const esp_err_t queue_ret = camera_ioctl(camera->fd, VIDIOC_QBUF, &buffer, "VIDIOC_QBUF");
         ESP_LOGE(TAG, "Frame size %zu exceeds buffer %" PRIu32 " length %zu", frame_size, buffer.index,
