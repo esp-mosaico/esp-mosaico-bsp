@@ -1,7 +1,7 @@
 {
   "utils": {
     "repository": "https://github.com/esp-mosaico/esp-mosaico-utils.git",
-    "revision": "b7fb6ba31f440ff13fbd138d14c50602f53f3209"
+    "revision": "0b0d9bc1af83f42471fd2c7e879290cb9837361f"
   },
   "engine": {
     "repository": "https://github.com/lisir233/raylib-lite-engine.git",
