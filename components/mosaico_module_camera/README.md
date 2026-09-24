@@ -36,3 +36,12 @@ inference.
 
 OV3640-only tuning and flash exposure register operations are skipped for
 SC101IOT. The current camera wiring supports the left slot only.
+
+## ESP-IDF compatibility
+
+During CMake configuration, this component attempts to apply its bundled DVP
+frame-capture stability patch to `$IDF_PATH`. The operation is idempotent: an
+already-applied patch is left unchanged. Git, a writable ESP-IDF checkout, and
+an applicable IDF source revision are required. If the patch cannot be applied,
+CMake reports a warning and continues the build; in that case the SC101IOT
+timing and frame-tail workarounds are not active.

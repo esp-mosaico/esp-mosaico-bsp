@@ -1,0 +1,166 @@
+diff --git a/components/esp_driver_cam/dvp/private_include/esp_cam_ctlr_dvp_dma.h b/components/esp_driver_cam/dvp/private_include/esp_cam_ctlr_dvp_dma.h
+index 70a05bde728..1d4ede2b34b 100644
+--- a/components/esp_driver_cam/dvp/private_include/esp_cam_ctlr_dvp_dma.h
++++ b/components/esp_driver_cam/dvp/private_include/esp_cam_ctlr_dvp_dma.h
+@@ -14,6 +14,7 @@ extern "C" {
+ #endif
+ 
+ #define ESP_CAM_CTLR_DVP_DMA_DESC_BUFFER_MAX_SIZE   DMA_DESCRIPTOR_BUFFER_MAX_SIZE_4B_ALIGNED
++#define ESP_CAM_CTLR_DVP_DMA_FRAME_TAIL_SIZE        64
+ 
+ /**
+  * @brief DVP DMA description object
+@@ -31,6 +32,7 @@ typedef struct esp_cam_ctlr_dvp_dma {
+     gdma_channel_handle_t dma_chan;                 /*!< DVP DMA channel handle */
+     size_t size;                                    /*!< DVP DMA buffer size */
+     esp_cam_ctlr_dvp_dma_desc_t *desc;              /*!< DVP DMA description buffer */
++    uint8_t *frame_tail;                            /*!< DVP DMA frame tail buffer */
+     size_t desc_count;                              /*!< DVP DMA description count */
+     size_t desc_size;                               /*!< DVP DMA description buffer size in byte */
+     size_t int_mem_align;                           /*!< DVP DMA internal memory alignment */
+@@ -43,12 +45,13 @@ typedef struct esp_cam_ctlr_dvp_dma {
+  * @param dma  DVP DMA object pointer
+  * @param burst_size DVP DMA burst transmission block size
+  * @param size DVP DMA buffer size
++ * @param frame_tail Whether to append a frame tail buffer
+  *
+  * @return
+  *      - ESP_OK on success
+  *      - Others if failed
+  */
+-esp_err_t esp_cam_ctlr_dvp_dma_init(esp_cam_ctlr_dvp_dma_t *dma, uint32_t burst_size, size_t size);
++esp_err_t esp_cam_ctlr_dvp_dma_init(esp_cam_ctlr_dvp_dma_t *dma, uint32_t burst_size, size_t size, bool frame_tail);
+ 
+ /**
+  * @brief De-initialize DVP DMA object
+diff --git a/components/esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_cam.c b/components/esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_cam.c
+index 23adf3d3f4b..b86c1efdcf2 100644
+--- a/components/esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_cam.c
++++ b/components/esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_cam.c
+@@ -181,6 +181,8 @@ static IRAM_ATTR esp_err_t esp_cam_ctlr_dvp_start_trans(esp_cam_ctlr_dvp_cam_t *
+     ESP_RETURN_ON_ERROR(esp_cache_msync((void *)(trans.buffer), trans.buflen, ESP_CACHE_MSYNC_FLAG_DIR_M2C),
+                         TAG, "failed to sync(M2C) trans buffer");
+ 
++    /* Discard any partial sample left at the previous VSYNC boundary. */
++    cam_ll_fifo_reset(ctlr->hal.hw);
+     ESP_RETURN_ON_ERROR_ISR(esp_cam_ctlr_dvp_dma_reset(&ctlr->dma), TAG, "failed to reset DMA");
+     ESP_RETURN_ON_ERROR_ISR(esp_cam_ctlr_dvp_dma_start(&ctlr->dma, trans.buffer, ctlr->fb_size_in_bytes), TAG, "failed to start DMA");
+ 
+@@ -232,11 +234,16 @@ static uint32_t IRAM_ATTR esp_cam_ctlr_dvp_get_recved_size(esp_cam_ctlr_dvp_cam_
+     if (ctlr->pic_format_jpeg) {
+         recv_buffer_size = ESP_ALIGN_UP(MIN(dma_recv_size, ctlr->fb_size_in_bytes), 64);
+     } else {
++        /* A short frame is incomplete; extra bytes are isolated in the DMA tail buffer. */
++        if (dma_recv_size < ctlr->fb_size_in_bytes) {
++            return 0;
++        }
+         recv_buffer_size = ctlr->fb_size_in_bytes;
+     }
+ 
+     if (esp_ptr_external_ram(rx_buffer)) {
+-        esp_err_t ret = esp_cache_msync(rx_buffer, recv_buffer_size, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
++        const size_t sync_size = MIN(ESP_ALIGN_UP(recv_buffer_size, 64), ctlr->fb_size_in_bytes);
++        esp_err_t ret = esp_cache_msync(rx_buffer, sync_size, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+         assert(ret == ESP_OK);
+         (void)ret;
+ 
+@@ -887,7 +894,7 @@ esp_err_t esp_cam_new_dvp_ctlr(const esp_cam_ctlr_dvp_config_t *config, esp_cam_
+         ESP_GOTO_ON_FALSE(ctlr->backup_buffer, ESP_ERR_NO_MEM, fail2, TAG, "no mem for DVP backup buffer");
+     }
+ 
+-    ESP_GOTO_ON_ERROR(esp_cam_ctlr_dvp_dma_init(&ctlr->dma, config->dma_burst_size, fb_size_in_bytes),
++    ESP_GOTO_ON_ERROR(esp_cam_ctlr_dvp_dma_init(&ctlr->dma, config->dma_burst_size, fb_size_in_bytes, !config->pic_format_jpeg),
+                       fail3, TAG, "failed to initialize DVP DMA");
+ 
+     gdma_rx_event_callbacks_t cbs = {
+@@ -929,6 +936,8 @@ esp_err_t esp_cam_new_dvp_ctlr(const esp_cam_ctlr_dvp_config_t *config, esp_cam_
+     }
+ 
+     cam_hal_init(&ctlr->hal, &cam_hal_config);
++    /* Sample DVP data on the stable PCLK edge used by SC101IOT. */
++    cam_ll_enable_invert_pclk(ctlr->hal.hw, true);
+ 
+     cam_ctlr_format_conv_config_t format_conv_config = {
+         .src_format = config->input_data_color_type,
+diff --git a/components/esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_gdma.c b/components/esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_gdma.c
+index 2b262029c03..6755d0c4f88 100644
+--- a/components/esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_gdma.c
++++ b/components/esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_gdma.c
+@@ -38,7 +38,7 @@ static const char *TAG = "dvp_gdma";
+  *      - ESP_OK on success
+  *      - Others if failed
+  */
+-static void IRAM_ATTR esp_cam_ctlr_dvp_config_dma_desc(esp_cam_ctlr_dvp_dma_desc_t *desc, uint8_t *buffer, uint32_t size, uint32_t max_desc_size)
++static size_t IRAM_ATTR esp_cam_ctlr_dvp_config_dma_desc(esp_cam_ctlr_dvp_dma_desc_t *desc, uint8_t *buffer, uint32_t size, uint32_t max_desc_size)
+ {
+     size_t n = 0;
+ 
+@@ -61,6 +61,8 @@ static void IRAM_ATTR esp_cam_ctlr_dvp_config_dma_desc(esp_cam_ctlr_dvp_dma_desc
+     if (n > 0) {
+         desc[n - 1].next = NULL;
+     }
++
++    return n;
+ }
+ 
+ /**
+@@ -69,12 +71,13 @@ static void IRAM_ATTR esp_cam_ctlr_dvp_config_dma_desc(esp_cam_ctlr_dvp_dma_desc
+  * @param dma  DVP DMA object pointer
+  * @param burst_size DVP DMA burst transmission block size
+  * @param size DVP DMA buffer size
++ * @param frame_tail Whether to append a frame tail buffer
+  *
+  * @return
+  *      - ESP_OK on success
+  *      - Others if failed
+  */
+-esp_err_t esp_cam_ctlr_dvp_dma_init(esp_cam_ctlr_dvp_dma_t *dma, uint32_t burst_size, size_t size)
++esp_err_t esp_cam_ctlr_dvp_dma_init(esp_cam_ctlr_dvp_dma_t *dma, uint32_t burst_size, size_t size, bool frame_tail)
+ {
+     esp_err_t ret = ESP_OK;
+     size_t alignment_size;
+@@ -118,6 +121,7 @@ esp_err_t esp_cam_ctlr_dvp_dma_init(esp_cam_ctlr_dvp_dma_t *dma, uint32_t burst_
+     if (size % desc_max_size) {
+         dma->desc_count++;
+     }
++    dma->desc_count += frame_tail;
+     dma->size = size;
+     alignment_size = (alignment_size == 0) ? 1 : alignment_size;
+     dma->desc_size = ESP_ALIGN_UP(dma->desc_count * sizeof(esp_cam_ctlr_dvp_dma_desc_t), alignment_size);
+@@ -127,8 +131,15 @@ esp_err_t esp_cam_ctlr_dvp_dma_init(esp_cam_ctlr_dvp_dma_t *dma, uint32_t burst_
+ 
+     ESP_GOTO_ON_FALSE(dma->desc, ESP_ERR_NO_MEM, fail1, TAG, "no mem for DVP DMA descriptor");
+ 
++    if (frame_tail) {
++        dma->frame_tail = heap_caps_aligned_alloc(MAX(dma->int_mem_align, 1), ESP_CAM_CTLR_DVP_DMA_FRAME_TAIL_SIZE, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
++        ESP_GOTO_ON_FALSE(dma->frame_tail, ESP_ERR_NO_MEM, fail2, TAG, "no mem for DVP DMA frame tail");
++    }
++
+     return ESP_OK;
+ 
++fail2:
++    heap_caps_free(dma->desc);
+ fail1:
+     gdma_disconnect(dma->dma_chan);
+ fail0:
+@@ -151,6 +162,7 @@ esp_err_t esp_cam_ctlr_dvp_dma_deinit(esp_cam_ctlr_dvp_dma_t *dma)
+     ESP_RETURN_ON_ERROR(gdma_del_channel(dma->dma_chan), TAG, "delete dma channel failed");
+ 
+     heap_caps_free(dma->desc);
++    heap_caps_free(dma->frame_tail);
+ 
+     return ESP_OK;
+ }
+@@ -178,7 +190,11 @@ esp_err_t IRAM_ATTR esp_cam_ctlr_dvp_dma_start(esp_cam_ctlr_dvp_dma_t *dma, uint
+     if (buffer_alignment > 1) {
+         max_desc_size = ESP_ALIGN_DOWN(max_desc_size, buffer_alignment);
+     }
+-    esp_cam_ctlr_dvp_config_dma_desc(dma->desc, buffer, size, max_desc_size);
++    size_t desc_count = esp_cam_ctlr_dvp_config_dma_desc(dma->desc, buffer, size, max_desc_size);
++    if (dma->frame_tail && desc_count > 0) {
++        esp_cam_ctlr_dvp_config_dma_desc(&dma->desc[desc_count], dma->frame_tail, ESP_CAM_CTLR_DVP_DMA_FRAME_TAIL_SIZE, ESP_CAM_CTLR_DVP_DMA_FRAME_TAIL_SIZE);
++        dma->desc[desc_count - 1].next = &dma->desc[desc_count];
++    }
+ 
+     if (esp_ptr_external_ram(dma->desc)) {
+         esp_err_t ret = esp_cache_msync(dma->desc, dma->desc_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
