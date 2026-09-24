@@ -1,0 +1,25 @@
+diff --git a/managed_components/espressif__esp_cam_sensor/sensors/sc101iot/sc101iot.c b/managed_components/espressif__esp_cam_sensor/sensors/sc101iot/sc101iot.c
+--- a/managed_components/espressif__esp_cam_sensor/sensors/sc101iot/sc101iot.c
++++ b/managed_components/espressif__esp_cam_sensor/sensors/sc101iot/sc101iot.c
+@@ -26,6 +26,7 @@
+ #endif
+ #define delay_ms(ms)  vTaskDelay((ms > portTICK_PERIOD_MS ? ms/ portTICK_PERIOD_MS : 1))
+ #define SC101IOT_SUPPORT_NUM CONFIG_CAMERA_SC101IOT_MAX_SUPPORT
++#define SC101IOT_PCLK_DELAY_STEP 0U
+ 
+ static const char *TAG = "sc101iot";
+ 
+@@ -375,6 +376,13 @@ static esp_err_t sc101iot_set_format(esp_cam_sensor_device_t *dev, const esp_cam
+         return ESP_CAM_SENSOR_ERR_FAILED_SET_FORMAT;
+     }
+ 
++    ret = sc101iot_write_reg_bits_a16v8(dev->sccb_handle, 0x3640, 0, 2, SC101IOT_PCLK_DELAY_STEP);
++    if (ret != ESP_OK) {
++        ESP_LOGE(TAG, "Set PCLK delay fail");
++        return ESP_CAM_SENSOR_ERR_FAILED_SET_FORMAT;
++    }
++    ESP_LOGI(TAG, "PCLK delay set to %u ns", SC101IOT_PCLK_DELAY_STEP * 2U);
++
+     dev->cur_format = format;
+ 
+     return ret;
