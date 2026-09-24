@@ -456,7 +456,7 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
         .scale_x = (float)PREVIEW_WIDTH / (float)crop_size,
         .scale_y = (float)PREVIEW_HEIGHT / (float)crop_size,
         .mirror_x = s_app.preview_flip,
-        .mirror_y = false,
+        .mirror_y = true,
         .mode = PPA_TRANS_MODE_BLOCKING,
     };
     ESP_RETURN_ON_ERROR(

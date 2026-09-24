@@ -73,15 +73,6 @@ index 23adf3d3f4b..b86c1efdcf2 100644
                        fail3, TAG, "failed to initialize DVP DMA");
  
      gdma_rx_event_callbacks_t cbs = {
-@@ -929,6 +936,8 @@ esp_err_t esp_cam_new_dvp_ctlr(const esp_cam_ctlr_dvp_config_t *config, esp_cam_
-     }
- 
-     cam_hal_init(&ctlr->hal, &cam_hal_config);
-+    /* Sample DVP data on the stable PCLK edge used by SC101IOT. */
-+    cam_ll_enable_invert_pclk(ctlr->hal.hw, true);
- 
-     cam_ctlr_format_conv_config_t format_conv_config = {
-         .src_format = config->input_data_color_type,
 diff --git a/components/esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_gdma.c b/components/esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_gdma.c
 index 2b262029c03..6755d0c4f88 100644
 --- a/components/esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_gdma.c
