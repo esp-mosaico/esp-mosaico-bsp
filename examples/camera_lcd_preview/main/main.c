@@ -24,6 +24,7 @@
 
 #define PREVIEW_WIDTH              BSP_LCD_H_RES
 #define PREVIEW_HEIGHT             BSP_LCD_V_RES
+#define PREVIEW_CROP_SIZE          640
 #define PREVIEW_BUFFER_ALIGNMENT   128
 #define CAPTURE_FAILURE_LIMIT      3
 #define LCD_TRANSFER_WARN_MS       100
@@ -168,9 +169,9 @@ static esp_err_t preview_convert_frame(const mosaico_camera_frame_t *frame)
         frame->pixel_format == V4L2_PIX_FMT_UYVY,
         ESP_ERR_NOT_SUPPORTED, TAG,
         "unsupported camera format 0x%08" PRIx32, frame->pixel_format);
-    const uint32_t crop_size = align_down_even(frame->width < frame->height ? frame->width : frame->height);
-    ESP_RETURN_ON_FALSE(crop_size > 0, ESP_ERR_INVALID_SIZE, TAG, "invalid camera frame size: %" PRIu32 "x%" PRIu32,
-                        frame->width, frame->height);
+    ESP_RETURN_ON_FALSE(frame->width >= PREVIEW_CROP_SIZE && frame->height >= PREVIEW_CROP_SIZE, ESP_ERR_INVALID_SIZE,
+                        TAG, "camera frame is smaller than crop: %" PRIu32 "x%" PRIu32, frame->width, frame->height);
+    const uint32_t crop_size = PREVIEW_CROP_SIZE;
     const uint32_t bytes_per_line = frame->bytes_per_line ? frame->bytes_per_line : frame->width * 2U;
     ESP_RETURN_ON_FALSE((bytes_per_line % 2U) == 0, ESP_ERR_INVALID_SIZE, TAG, "camera stride is not pixel aligned");
 
@@ -256,6 +257,7 @@ static esp_err_t preview_draw(void)
 static esp_err_t preview_run(void)
 {
     uint32_t frame_count = 0;
+    uint32_t dropped_frame_count = 0;
     uint32_t capture_failures = 0;
     bool restart_attempted = false;
     TickType_t log_start = xTaskGetTickCount();
@@ -263,6 +265,12 @@ static esp_err_t preview_run(void)
     while (true) {
         mosaico_camera_frame_t frame = {0};
         esp_err_t ret = mosaico_camera_get_frame(s_preview.camera, &frame);
+        if (ret == ESP_ERR_INVALID_SIZE) {
+            dropped_frame_count++;
+            capture_failures = 0;
+            restart_attempted = false;
+            continue;
+        }
         if (ret != ESP_OK) {
             capture_failures++;
             ESP_LOGW(
@@ -285,14 +293,23 @@ static esp_err_t preview_run(void)
         capture_failures = 0;
         restart_attempted = false;
 
+        const size_t expected_size = (size_t)frame.width * frame.height * 2U;
+        if (frame.size < expected_size) {
+            ESP_LOGW(TAG, "Drop invalid camera frame: received=%zu expected=%zu", frame.size, expected_size);
+            ESP_RETURN_ON_ERROR(mosaico_camera_return_frame(s_preview.camera, &frame), TAG, "return invalid camera frame failed");
+            dropped_frame_count++;
+            continue;
+        }
+
         ret = preview_convert_frame(&frame);
         const esp_err_t return_ret = mosaico_camera_return_frame(s_preview.camera, &frame);
-        ESP_RETURN_ON_ERROR(
-            return_ret, TAG, "return camera frame failed");
-        ESP_RETURN_ON_ERROR(
-            ret, TAG, "prepare preview frame failed");
-        ESP_RETURN_ON_ERROR(
-            preview_draw(), TAG, "draw preview frame failed");
+        ESP_RETURN_ON_ERROR(return_ret, TAG, "return camera frame failed");
+        if (ret == ESP_ERR_INVALID_SIZE) {
+            dropped_frame_count++;
+            continue;
+        }
+        ESP_RETURN_ON_ERROR(ret, TAG, "prepare preview frame failed");
+        ESP_RETURN_ON_ERROR(preview_draw(), TAG, "draw preview frame failed");
 
         frame_count++;
         if (frame_count == 1) {
@@ -305,8 +322,8 @@ static esp_err_t preview_run(void)
                                   ? (float)STATS_FRAME_INTERVAL * 1000.0f / (float)elapsed_ms
                                   : 0.0f;
             ESP_LOGI(
-                TAG, "Preview frames=%" PRIu32 " rate=%.1f fps",
-                frame_count, fps);
+                TAG, "Preview frames=%" PRIu32 " dropped=%" PRIu32 " rate=%.1f fps",
+                frame_count, dropped_frame_count, fps);
             log_start = now;
         }
     }

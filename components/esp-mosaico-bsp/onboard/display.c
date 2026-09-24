@@ -15,6 +15,8 @@
 #include "mosaico_boot_handoff.h"
 #include "sdkconfig.h"
 
+#define BSP_LCD_DMA_CHUNK_LINES 8
+
 static const char *TAG = "S31-Mosaico-LCD";
 #if CONFIG_BSP_CO5300_ENABLE_TE
 #define BSP_LCD_TE_STATE_TEXT "enabled"
@@ -246,7 +248,7 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
 
     const spi_bus_config_t bus_config = CO5300_PANEL_BUS_QSPI_CONFIG(
         lcd_scl, BSP_LCD_DATA0, BSP_LCD_DATA1, BSP_LCD_DATA2, BSP_LCD_DATA3,
-        BSP_LCD_H_RES * BSP_LCD_V_RES * BSP_LCD_BITS_PER_PIXEL / 8);
+        BSP_LCD_H_RES * BSP_LCD_DMA_CHUNK_LINES * BSP_LCD_BITS_PER_PIXEL / 8);
     ESP_RETURN_ON_ERROR(spi_bus_initialize(BSP_LCD_SPI_HOST, &bus_config, SPI_DMA_CH_AUTO), TAG,
                         "initialize CO5300 QSPI bus failed");
     s_spi_bus_initialized = true;
@@ -258,7 +260,7 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
     }
 
     esp_lcd_panel_io_spi_config_t io_config = CO5300_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, NULL, NULL);
-    io_config.flags.psram_dma_direct = true;
+    io_config.flags.psram_dma_direct = false;
     ret = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_HOST, &io_config, &s_panel_io);
     if (ret != ESP_OK) {
         spi_bus_free(BSP_LCD_SPI_HOST);

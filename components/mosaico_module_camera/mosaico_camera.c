@@ -199,19 +199,6 @@ static esp_err_t camera_hardware_release(bsp_subboard_slot_t slot)
     return ESP_OK;
 }
 
-static uint32_t pixel_format_to_v4l2(mosaico_camera_pixel_format_t format)
-{
-    switch (format) {
-    case MOSAICO_CAMERA_PIXEL_FORMAT_RGB565:
-        return V4L2_PIX_FMT_RGB565;
-    case MOSAICO_CAMERA_PIXEL_FORMAT_JPEG:
-        return V4L2_PIX_FMT_JPEG;
-    case MOSAICO_CAMERA_PIXEL_FORMAT_UYVY:
-    default:
-        return V4L2_PIX_FMT_UYVY;
-    }
-}
-
 static esp_err_t camera_ioctl(int fd, unsigned long request, void *arg,
                               const char *operation)
 {
@@ -606,11 +593,11 @@ static esp_err_t open_video_device(mosaico_camera_handle_t camera)
     }
     const uint32_t requested_width = format.fmt.pix.width;
     const uint32_t requested_height = format.fmt.pix.height;
-    format.fmt.pix.pixelformat = pixel_format_to_v4l2(camera->config.pixel_format);
+    format.fmt.pix.pixelformat = camera->config.pixel_format;
     ESP_RETURN_ON_ERROR(
         camera_ioctl(camera->fd, VIDIOC_S_FMT, &format, "VIDIOC_S_FMT"), TAG,
         "set camera format failed");
-    const uint32_t requested_format = pixel_format_to_v4l2(camera->config.pixel_format);
+    const uint32_t requested_format = camera->config.pixel_format;
     if (format.fmt.pix.width != requested_width || format.fmt.pix.height != requested_height ||
         format.fmt.pix.pixelformat != requested_format) {
         ESP_LOGE(TAG, "Camera format mismatch: requested=%" PRIu32 "x%" PRIu32 "/0x%08" PRIx32
@@ -711,8 +698,8 @@ esp_err_t mosaico_camera_new(const mosaico_camera_config_t *config,
             active.buffer_count >= 1 &&
             active.buffer_count <= CAMERA_MAX_BUFFER_COUNT &&
             active.frame_timeout_ms > 0 && active.discovery_timeout_ms > 0 &&
-            active.pixel_format >= MOSAICO_CAMERA_PIXEL_FORMAT_UYVY &&
-            active.pixel_format <= MOSAICO_CAMERA_PIXEL_FORMAT_JPEG &&
+            (active.pixel_format == V4L2_PIX_FMT_UYVY || active.pixel_format == V4L2_PIX_FMT_RGB565 ||
+             active.pixel_format == V4L2_PIX_FMT_JPEG) &&
             (active.slot == MOSAICO_MODULE_MGR_SLOT_AUTO ||
              (active.slot >= MOSAICO_MODULE_MGR_SLOT_LEFT && active.slot < MOSAICO_MODULE_MGR_SLOT_COUNT)),
         ESP_ERR_INVALID_ARG, TAG, "invalid camera configuration");
@@ -921,7 +908,18 @@ esp_err_t mosaico_camera_get_frame(mosaico_camera_handle_t camera,
         return ESP_ERR_INVALID_RESPONSE;
     }
 
-    const size_t frame_size = buffer.bytesused ? buffer.bytesused : camera->buffer_lengths[buffer.index];
+    if ((buffer.flags & V4L2_BUF_FLAG_ERROR) || buffer.bytesused == 0) {
+        const esp_err_t queue_ret = camera_ioctl(camera->fd, VIDIOC_QBUF, &buffer, "VIDIOC_QBUF");
+        ESP_LOGD(TAG, "Discard invalid frame index=%" PRIu32 " flags=0x%08" PRIx32 " bytes=%" PRIu32,
+                 buffer.index, buffer.flags, buffer.bytesused);
+        if (queue_ret != ESP_OK) {
+            ESP_LOGE(TAG, "Requeue invalid frame failed: %s", esp_err_to_name(queue_ret));
+        }
+        xSemaphoreGive(camera->lock);
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    const size_t frame_size = buffer.bytesused;
     if (frame_size > camera->buffer_lengths[buffer.index]) {
         const esp_err_t queue_ret = camera_ioctl(camera->fd, VIDIOC_QBUF, &buffer, "VIDIOC_QBUF");
         ESP_LOGE(TAG, "Frame size %zu exceeds buffer %" PRIu32 " length %zu", frame_size, buffer.index,

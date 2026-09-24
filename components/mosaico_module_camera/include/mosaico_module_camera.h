@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #include "esp_err.h"
+#include "linux/videodev2.h"
 #include "mosaico_module_mgr.h"
 
 #ifdef __cplusplus
@@ -20,7 +21,7 @@ extern "C" {
     .slot = MOSAICO_MODULE_MGR_SLOT_AUTO,                        \
     .width = 0,                                                  \
     .height = 0,                                                 \
-    .pixel_format = MOSAICO_CAMERA_PIXEL_FORMAT_UYVY,            \
+    .pixel_format = V4L2_PIX_FMT_UYVY,                           \
     .buffer_count = 2,                                           \
     .frame_timeout_ms = 1000,                                    \
     .discovery_timeout_ms = 1500,                                \
@@ -31,18 +32,12 @@ extern "C" {
 typedef struct mosaico_camera_t *mosaico_camera_handle_t;
 typedef struct mosaico_camera_jpeg_decoder_t *mosaico_camera_jpeg_decoder_handle_t;
 
-typedef enum {
-    MOSAICO_CAMERA_PIXEL_FORMAT_UYVY = 0,
-    MOSAICO_CAMERA_PIXEL_FORMAT_RGB565,
-    MOSAICO_CAMERA_PIXEL_FORMAT_JPEG,
-} mosaico_camera_pixel_format_t;
-
 typedef struct {
     mosaico_module_mgr_slot_t slot;
     /* Set both dimensions to zero to use the sensor Kconfig default. */
     uint32_t width;
     uint32_t height;
-    mosaico_camera_pixel_format_t pixel_format;
+    uint32_t pixel_format; /* V4L2 pixel format FOURCC. */
     uint8_t buffer_count;
     uint32_t frame_timeout_ms;
     uint32_t discovery_timeout_ms;

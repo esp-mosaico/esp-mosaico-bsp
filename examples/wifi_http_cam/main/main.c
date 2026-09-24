@@ -6,7 +6,7 @@
 
 /**
  * @file main.c
- * @brief SoftAP + HTTP MJPEG/snapshot from OV3640 on ESP-Mosaico.
+ * @brief SoftAP + HTTP MJPEG/snapshot from an ESP-Mosaico CameraBoard.
  */
 
 #include <inttypes.h>
@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "esp_check.h"
+#include "driver/jpeg_encode.h"
 #include "esp_event.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -31,6 +32,8 @@
 #define WIFI_AP_MAX_CONN           4
 
 #define CAMERA_RETRY_DELAY_MS      500
+#define JPEG_QUALITY               80
+#define JPEG_TIMEOUT_MS            1000
 #define STREAM_BOUNDARY            "mosaicoframe"
 
 static const char *TAG = "wifi_http_cam";
@@ -42,11 +45,14 @@ static const char *INDEX_HTML =
     "<style>body{margin:0;background:#111;color:#eee;font-family:sans-serif;text-align:center}"
     "img{max-width:100%;height:auto}</style></head><body>"
     "<h1>Mosaico Cam</h1>"
-    "<p><a href=\"/jpg\">snapshot</a> · <a href=\"/stream\">raw stream</a></p>"
+    "<p><a href=\"/jpg\">snapshot</a> · <a href=\"/stream\">MJPEG stream</a></p>"
     "<img src=\"/stream\" alt=\"stream\"></body></html>";
 
 typedef struct {
     mosaico_camera_handle_t camera;
+    jpeg_encoder_handle_t jpeg_encoder;
+    uint8_t *jpeg_buffer;
+    size_t jpeg_capacity;
     SemaphoreHandle_t frame_lock;
     httpd_handle_t http;
 } app_context_t;
@@ -80,7 +86,7 @@ static esp_err_t wifi_softap_start(void)
 static esp_err_t camera_wait_and_open(void)
 {
     mosaico_camera_config_t config = MOSAICO_CAMERA_DEFAULT_CONFIG();
-    config.pixel_format = MOSAICO_CAMERA_PIXEL_FORMAT_JPEG;
+    config.pixel_format = V4L2_PIX_FMT_UYVY;
     config.allow_unidentified = true;
     while (true) {
         esp_err_t ret = mosaico_camera_new(&config, &s_app.camera);
@@ -110,16 +116,44 @@ static esp_err_t app_buffers_init(void)
 {
     s_app.frame_lock = xSemaphoreCreateMutex();
     ESP_RETURN_ON_FALSE(s_app.frame_lock, ESP_ERR_NO_MEM, TAG, "frame lock");
+
+    mosaico_camera_info_t info = {0};
+    ESP_RETURN_ON_ERROR(mosaico_camera_get_info(s_app.camera, &info), TAG, "camera info");
+    const jpeg_encode_memory_alloc_cfg_t memory = {
+        .buffer_direction = JPEG_ENC_ALLOC_OUTPUT_BUFFER,
+    };
+    s_app.jpeg_buffer = jpeg_alloc_encoder_mem(info.frame_buffer_size, &memory, &s_app.jpeg_capacity);
+    ESP_RETURN_ON_FALSE(s_app.jpeg_buffer, ESP_ERR_NO_MEM, TAG, "JPEG output buffer");
+
+    const jpeg_encode_engine_cfg_t engine_config = {
+        .timeout_ms = JPEG_TIMEOUT_MS,
+    };
+    ESP_RETURN_ON_ERROR(jpeg_new_encoder_engine(&engine_config, &s_app.jpeg_encoder), TAG, "JPEG encoder");
     return ESP_OK;
 }
 
-static esp_err_t capture_jpeg(mosaico_camera_frame_t *frame)
+static esp_err_t capture_jpeg(size_t *jpeg_size)
 {
-    ESP_RETURN_ON_ERROR(mosaico_camera_get_frame(s_app.camera, frame), TAG, "get frame");
-    if (frame->pixel_format != V4L2_PIX_FMT_JPEG || !frame->size) {
-        ESP_ERROR_CHECK(mosaico_camera_return_frame(s_app.camera, frame));
-        return ESP_ERR_NOT_SUPPORTED;
+    mosaico_camera_frame_t frame = {0};
+    ESP_RETURN_ON_ERROR(mosaico_camera_get_frame(s_app.camera, &frame), TAG, "get frame");
+
+    esp_err_t err = ESP_ERR_NOT_SUPPORTED;
+    uint32_t encoded_size = 0;
+    if (frame.pixel_format == V4L2_PIX_FMT_UYVY && frame.size) {
+        const jpeg_encode_cfg_t config = {
+            .height = frame.height,
+            .width = frame.width,
+            .src_type = JPEG_ENCODE_IN_FORMAT_YUV422,
+            .sub_sample = JPEG_DOWN_SAMPLING_YUV422,
+            .image_quality = JPEG_QUALITY,
+        };
+        err = jpeg_encoder_process(s_app.jpeg_encoder, &config, frame.data, frame.size, s_app.jpeg_buffer,
+                                   s_app.jpeg_capacity, &encoded_size);
     }
+    const esp_err_t return_err = mosaico_camera_return_frame(s_app.camera, &frame);
+    ESP_RETURN_ON_ERROR(err, TAG, "JPEG encode");
+    ESP_RETURN_ON_ERROR(return_err, TAG, "return frame");
+    *jpeg_size = encoded_size;
     return ESP_OK;
 }
 
@@ -136,8 +170,8 @@ static esp_err_t handle_jpg(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    mosaico_camera_frame_t frame = {0};
-    esp_err_t err = capture_jpeg(&frame);
+    size_t jpeg_size = 0;
+    esp_err_t err = capture_jpeg(&jpeg_size);
     if (err != ESP_OK) {
         xSemaphoreGive(s_app.frame_lock);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "capture failed");
@@ -146,8 +180,7 @@ static esp_err_t handle_jpg(httpd_req_t *req)
 
     httpd_resp_set_type(req, "image/jpeg");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    err = httpd_resp_send(req, (const char *)frame.data, frame.size);
-    ESP_ERROR_CHECK(mosaico_camera_return_frame(s_app.camera, &frame));
+    err = httpd_resp_send(req, (const char *)s_app.jpeg_buffer, jpeg_size);
     xSemaphoreGive(s_app.frame_lock);
     return err;
 }
@@ -167,8 +200,8 @@ static esp_err_t handle_stream(httpd_req_t *req)
             continue;
         }
 
-        mosaico_camera_frame_t frame = {0};
-        err = capture_jpeg(&frame);
+        size_t jpeg_size = 0;
+        err = capture_jpeg(&jpeg_size);
         if (err != ESP_OK) {
             xSemaphoreGive(s_app.frame_lock);
             vTaskDelay(pdMS_TO_TICKS(50));
@@ -179,15 +212,13 @@ static esp_err_t handle_stream(httpd_req_t *req)
                                "\r\n--" STREAM_BOUNDARY "\r\n"
                                "Content-Type: image/jpeg\r\n"
                                "Content-Length: %d\r\n\r\n",
-                               (int)frame.size);
+                               (int)jpeg_size);
         if (httpd_resp_send_chunk(req, part_hdr, hdr_len) != ESP_OK ||
-            httpd_resp_send_chunk(req, (const char *)frame.data, frame.size) != ESP_OK) {
-            ESP_ERROR_CHECK(mosaico_camera_return_frame(s_app.camera, &frame));
+            httpd_resp_send_chunk(req, (const char *)s_app.jpeg_buffer, jpeg_size) != ESP_OK) {
             xSemaphoreGive(s_app.frame_lock);
             ESP_LOGW(TAG, "stream client disconnected");
             break;
         }
-        ESP_ERROR_CHECK(mosaico_camera_return_frame(s_app.camera, &frame));
         xSemaphoreGive(s_app.frame_lock);
     }
 
@@ -230,8 +261,11 @@ void app_main(void)
     ESP_LOGI(TAG, "SoftAP HTTP camera");
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(wifi_softap_start());
-    ESP_ERROR_CHECK(app_buffers_init());
     ESP_ERROR_CHECK(camera_wait_and_open());
+    ESP_ERROR_CHECK(app_buffers_init());
+    size_t jpeg_size = 0;
+    ESP_ERROR_CHECK(capture_jpeg(&jpeg_size));
+    ESP_LOGI(TAG, "JPEG encoder ready: %u bytes", (unsigned)jpeg_size);
     ESP_ERROR_CHECK(http_server_start());
     ESP_LOGI(TAG, "Ready: connect to %s then open http://192.168.4.1/", WIFI_AP_SSID);
 }

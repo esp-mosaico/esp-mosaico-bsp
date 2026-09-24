@@ -701,7 +701,7 @@ static void build_gallery_screen(void)
     s_ui.gallery_img = lv_image_create(s_ui.gallery_screen);
     lv_obj_set_size(s_ui.gallery_img, SCREEN_W, SCREEN_H);
     lv_obj_align(s_ui.gallery_img, LV_ALIGN_CENTER, 0, 0);
-    lv_image_set_inner_align(s_ui.gallery_img, LV_IMAGE_ALIGN_STRETCH);
+    lv_image_set_inner_align(s_ui.gallery_img, LV_IMAGE_ALIGN_CENTER);
     lv_obj_add_flag(s_ui.gallery_img, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_ui.gallery_img, gallery_swipe_event_cb, LV_EVENT_PRESSED, NULL);
     lv_obj_add_event_cb(s_ui.gallery_img, gallery_swipe_event_cb, LV_EVENT_RELEASED, NULL);

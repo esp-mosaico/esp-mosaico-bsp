@@ -19,3 +19,9 @@ dependencies:
     override_path: ../mosaico_module_mgr
 
   espressif/led_strip: "^3.0.3"
+
+  espressif/touch_button:
+    version: "^1.0"
+    path: ../touch_button
+
+  espressif/touch_sensor_lowlevel: "^1.0.1"

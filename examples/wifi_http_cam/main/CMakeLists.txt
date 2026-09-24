@@ -7,4 +7,5 @@ idf_component_register(
         nvs_flash
         esp_netif
         esp_event
+        esp_driver_jpeg
 )
