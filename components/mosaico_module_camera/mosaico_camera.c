@@ -111,15 +111,17 @@ static uint32_t s_usj_intr_enable_mask;
 
 static esp_err_t camera_flash_force_off(void)
 {
+    /* Release the high-side P-MOS gate through the board pull-up. */
     const gpio_config_t config = {
         .pin_bit_mask = BIT64(GPIO_NUM_34),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .mode = GPIO_MODE_OUTPUT_OD,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     ESP_RETURN_ON_ERROR(gpio_set_level(GPIO_NUM_34, 1), TAG, "preset camera flash off failed");
-    return gpio_config(&config);
+    ESP_RETURN_ON_ERROR(gpio_config(&config), TAG, "configure camera flash open drain failed");
+    return gpio_sleep_sel_dis(GPIO_NUM_34);
 }
 
 static esp_err_t camera_hardware_acquire(bsp_subboard_slot_t slot, mosaico_camera_hw_config_t *out_config)
@@ -404,6 +406,8 @@ static esp_err_t start_stream(mosaico_camera_handle_t camera)
 
 static esp_err_t stop_stream(mosaico_camera_handle_t camera)
 {
+    /* Release the flash even if the stream is already stopped. */
+    flash_gpio_set_off(camera);
     if (!camera->streaming || camera->fd < 0) {
         return ESP_OK;
     }
