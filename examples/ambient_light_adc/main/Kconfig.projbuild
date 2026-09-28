@@ -1,0 +1,18 @@
+menu "Ambient light ADC"
+    config LIGHT_ADC_CALIBRATED
+        bool "Use measured two-point calibration"
+        default n
+        help
+            Enable only after measuring GPIO48 raw values at 0 mV and 2000 mV.
+            Without calibration the UI displays raw counts, not a guessed voltage.
+    config LIGHT_ADC_RAW_AT_ZERO
+        int "Average raw value measured at 0 mV"
+        range 0 131071
+        default 0
+        depends on LIGHT_ADC_CALIBRATED
+    config LIGHT_ADC_RAW_AT_2V
+        int "Average raw value measured at 2000 mV"
+        range 0 131071
+        default 0
+        depends on LIGHT_ADC_CALIBRATED
+endmenu

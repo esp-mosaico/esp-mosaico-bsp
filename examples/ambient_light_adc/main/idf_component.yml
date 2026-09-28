@@ -1,0 +1,6 @@
+dependencies:
+  idf: ">=6.2"
+  esp-mosaico-bsp:
+    path: ../../../components/esp-mosaico-bsp
+  espressif/esp_codec_dev:
+    version: "2.0.0-beta5"
