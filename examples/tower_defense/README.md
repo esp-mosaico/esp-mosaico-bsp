@@ -27,7 +27,7 @@ idf.py --preview -C examples/tower_defense -DIDF_TARGET=esp32s31 build
 
 首次配置会自动下载[依赖清单](../common/game_dependencies.json)指定的引擎和 utils 提交到本工程的 `build/_deps/`。
 无需 vibe 工作区或相邻仓库；重复构建复用已下载的提交。仅这些游戏示例需要这两项依赖。
-ESP-GSP 固定为 1.4.0，GSP 编译器由固定的产品工具自动解析。
+ESP-GSP 固定为 1.5.1，GSP 编译器由固定的产品工具自动解析。
 
 Host 仿真不需要 ESP-IDF。从 BSP 根目录执行：
 

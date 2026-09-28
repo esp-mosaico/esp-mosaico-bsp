@@ -2,7 +2,7 @@ dependencies:
   # Public engine/runtime versions are platform ABI pins.
   idf: ">=6.2"
   georgik/raylib: "==6.0.0~2"
-  espressif/esp-gsp: "==1.4.0"
+  espressif/esp-gsp: "==1.5.1"
   espressif/esp_mmap_assets: "^2.0.0"
   esp-mosaico-bsp:
     version: "*"
