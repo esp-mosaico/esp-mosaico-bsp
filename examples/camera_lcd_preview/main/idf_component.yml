@@ -1,6 +1,5 @@
 dependencies:
-  idf:
-    version: ">=6.2"
+  idf: ">=6.2"
 
   esp-mosaico-bsp:
     path: ../../../components/esp-mosaico-bsp
