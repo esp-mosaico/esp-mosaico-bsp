@@ -98,24 +98,10 @@ esp_err_t mosaico_camera_open(mosaico_camera_handle_t camera);
 /** @brief Start capture and discard stale startup frames. */
 esp_err_t mosaico_camera_start_stream(mosaico_camera_handle_t camera);
 
-/**
- * @brief Stop capture after every borrowed frame has been returned
- *
- * Wait for downstream consumers (including DMA) before returning frames.
- * This call does not wait for borrowers or cancel their work. It returns
- * ESP_ERR_INVALID_STATE while any frame is borrowed, keeping capture intact.
- * Stopping an already stopped stream succeeds. Call start_stream() to resume.
- * The application must coordinate capture and shutdown; this component does
- * not register a global esp_restart() shutdown handler.
- */
+/** @brief Stop capture after every borrowed frame has been returned. */
 esp_err_t mosaico_camera_stop_stream(mosaico_camera_handle_t camera);
 
-/**
- * @brief Stop capture and release buffers, keeping the video device registered
- *
- * Return every borrowed frame first, as for stop_stream(). On a stop failure
- * buffers are retained. Call open() and start_stream() to capture again.
- */
+/** @brief Release capture buffers while keeping the video device registered. */
 esp_err_t mosaico_camera_close(mosaico_camera_handle_t camera);
 
 esp_err_t mosaico_camera_get_info(mosaico_camera_handle_t camera,
@@ -125,17 +111,9 @@ esp_err_t mosaico_camera_get_pipeline_stats(
     mosaico_camera_handle_t camera,
     mosaico_camera_pipeline_stats_t *out_stats);
 
-/**
- * @brief Borrow one captured frame until return_frame() succeeds
- *
- * The application owns the loan, not the storage. Serialize frame consumers
- * and lifecycle changes; a mutex inside the driver cannot protect a buffer
- * after this function returns. Do not access the frame after returning it.
- */
 esp_err_t mosaico_camera_get_frame(mosaico_camera_handle_t camera,
                                    mosaico_camera_frame_t *out_frame);
 
-/** @brief Requeue a borrowed frame after all CPU/DMA consumers have finished. */
 esp_err_t mosaico_camera_return_frame(mosaico_camera_handle_t camera,
                                       const mosaico_camera_frame_t *frame);
 
@@ -217,19 +195,10 @@ esp_err_t mosaico_camera_set_power_down(mosaico_camera_handle_t camera,
 
 bool mosaico_camera_is_power_down(mosaico_camera_handle_t camera);
 
-/**
- * @brief Restart the capture stream, not the CPU
- *
- * Returns ESP_ERR_INVALID_STATE without restarting if any frame is borrowed.
- */
 esp_err_t mosaico_camera_restart(mosaico_camera_handle_t camera);
 
 /**
  * @brief Stop streaming and release every camera and subboard resource
- *
- * Return all frames and stop concurrent API users before calling. If stopping
- * or cleanup fails, the handle is retained for cleanup retry; do not discard
- * it. The handle becomes invalid only when this call returns ESP_OK.
  */
 esp_err_t mosaico_camera_del(mosaico_camera_handle_t camera);
 
