@@ -42,12 +42,12 @@ dependencies:
     version: "^4"
     public: true
 
-  espressif2022/bmi270:
-    version: "^1.1.0~2"
+  espressif/bmi270_sensor:
+    version: "^0.4.1"
     public: true
 
-  tangyumei3535/bmm150_sensorapi:
-    version: "^1.0.0"
+  espressif/bmm150:
+    version: "1.1.0"
     public: true
 
   espressif/bq27220:

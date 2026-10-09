@@ -31,3 +31,7 @@ idf_component_register(
     INCLUDE_DIRS "include"
     REQUIRES ${BSP_REQUIRES}
 )
+
+# Preserve integer samples and the overflow sentinel used by magnetic classifiers.
+idf_component_get_property(bmm150_lib espressif__bmm150 COMPONENT_LIB)
+target_compile_options(${bmm150_lib} PUBLIC -UBMM150_USE_FLOATING_POINT)
