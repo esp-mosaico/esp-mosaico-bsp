@@ -71,4 +71,4 @@ ESP_ERROR_CHECK(mosaico_module_mgr_release(&lease));
 - 外部任务的 `unsubscribe` 会等待正在运行的 callback 完成；callback 可以取消自身。
 - callback 中不能调用 `deinit`，且应避免长时间阻塞 event task。
 
-完整实现说明见 [`docs/mosaico_module_mgr_workflow.md`](../../docs/mosaico_module_mgr_workflow.md)。
+公开接口见 [`mosaico_module_mgr.h`](include/mosaico_module_mgr.h)。
