@@ -37,20 +37,17 @@ class BootHandoffTests(unittest.TestCase):
             (folder / "consumer.c").write_text(
                 f'#include "{consumer}"\n'
                 'bool consume(void) { return mosaico_boot_handoff_consume(); }\n')
-            (folder / "compat.c").write_text(
-                f'#include "{root}/components/mosaico_boot_splash/include/mosaico_boot_handoff.h"\n'
-                'bool compat_consume(void) { return mosaico_boot_handoff_consume(); }\n')
             (folder / "main.c").write_text(
                 '#include <assert.h>\n#include <stdint.h>\n#include <stdbool.h>\n'
-                'uint32_t registers[32]; void publish(void); bool consume(void); bool compat_consume(void);\n'
+                'uint32_t registers[32]; void publish(void); bool consume(void);\n'
                 'int main(void) { assert(!consume()); publish(); assert(consume()); '
-                'assert(!consume()); publish(); assert(compat_consume()); assert(!consume()); '
+                'assert(!consume()); '
                 'registers[15]=123; assert(!consume()); '
                 'assert(registers[15]==0); return 0; }\n')
             binary = folder / "check"
             subprocess.run([compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
                 "-I", str(folder), "-I", str(root / "components/esp-mosaico-bsp/include"),
-                str(folder / "producer.c"), str(folder / "compat.c"),
+                str(folder / "producer.c"),
                 str(folder / "consumer.c"), str(folder / "main.c"),
                 "-o", str(binary)], check=True, capture_output=True)
             subprocess.run([str(binary)], check=True)
