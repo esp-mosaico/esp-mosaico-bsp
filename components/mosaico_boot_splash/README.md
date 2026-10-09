@@ -1,9 +1,8 @@
-# Mosaico boot splash handoff
+# Mosaico boot splash handoff compatibility
 
-The retained Recovery bootloader owns the first visible LCD frame.  After the
-complete splash has been written it publishes a one-shot marker in LP STORE15.
-The BSP consumes that marker before creating the CO5300 panel and adopts the
-already-awake panel without resetting it or repeating the Sleep Out delay.
+The panel handoff contract now lives in `esp-mosaico-bsp/include/bsp/mosaico_boot_handoff.h`.
+This component preserves the previous `mosaico_boot_handoff.h` include for existing applications.
+BSP itself does not depend on this compatibility component.
 
-Splash failure remains non-fatal: without a valid marker the BSP follows its
-normal full-reset initialization path.
+The retained Recovery bootloader still draws the startup image and publishes the LP STORE15 marker.
+BSP consumes it to adopt the already-awake panel; without a valid marker it performs normal initialization.

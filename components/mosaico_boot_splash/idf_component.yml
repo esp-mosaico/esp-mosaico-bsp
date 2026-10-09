@@ -1,5 +1,5 @@
 version: "0.1.0"
-description: Retained boot splash handoff shared by the ESP-Mosaico bootloader and BSP
+description: Compatibility include for the BSP panel handoff contract
 license: Apache-2.0
 
 targets:
@@ -7,3 +7,6 @@ targets:
 
 dependencies:
   idf: ">=6.2"
+  esp-mosaico-bsp:
+    version: "*"
+    override_path: ../esp-mosaico-bsp

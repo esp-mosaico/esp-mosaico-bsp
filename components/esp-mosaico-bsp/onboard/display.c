@@ -12,7 +12,7 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_touch_cst9220.h"
 #include "esp_log.h"
-#include "mosaico_boot_handoff.h"
+#include "bsp/mosaico_boot_handoff.h"
 #include "sdkconfig.h"
 
 #define BSP_LCD_DMA_CHUNK_LINES 8
