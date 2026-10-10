@@ -1,0 +1,3 @@
+dependencies:
+  mosaico_module_mgr:
+    path: ../../../components/mosaico_module_mgr
