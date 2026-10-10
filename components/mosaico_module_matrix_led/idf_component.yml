@@ -1,0 +1,11 @@
+version: "0.1.0"
+description: ESP-Mosaico 8x8 WS2812 matrix LED module
+license: Apache-2.0
+dependencies:
+  esp-mosaico-bsp:
+    version: "*"
+    public: true
+    override_path: ../esp-mosaico-bsp
+  espressif/led_strip:
+    version: "^3.0.3"
+    public: true
