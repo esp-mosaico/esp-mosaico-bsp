@@ -23,9 +23,14 @@ ESP_ERROR_CHECK(mosaico_camera_del(camera));
 By default, the camera uses the sensor's Kconfig-selected resolution in UYVY
 format with two buffers. A frame remains owned by the caller until
 `mosaico_camera_return_frame()` is called. Return all frames before calling
-`mosaico_camera_stop_stream()`, `mosaico_camera_close()`, or
-`mosaico_camera_restart()`. Closing capture keeps `/dev/video2` registered so
-another consumer can open it.
+`mosaico_camera_stop_stream()`, `mosaico_camera_close()`,
+`mosaico_camera_restart()`, or `mosaico_camera_del()`. Closing capture keeps
+`/dev/video2` registered so another consumer can open it.
+
+Software reset may leave camera or display DMA active, causing capture failures
+after reboot. Before `esp_restart()`, the application must stop requesting frames,
+wait for PPA/LCD completion, return borrowed frames, and stop or delete the camera.
+A DMA timeout does not cancel the transfer; do not return frames still in use.
 
 JPEG camera frames can be decoded to a reusable RGB888 buffer with the ESP32-S31
 hardware JPEG engine through `mosaico_camera_jpeg_decoder_new()` and
