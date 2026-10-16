@@ -1,0 +1,8 @@
+version: "0.1.0"
+description: ESP-Mosaico MLX90640 thermal imaging module
+license: Apache-2.0
+dependencies:
+  esp-mosaico-bsp:
+    version: "*"
+    public: true
+    override_path: ../esp-mosaico-bsp
