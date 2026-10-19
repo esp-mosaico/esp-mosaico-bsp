@@ -269,7 +269,7 @@ static void apply_orientation_label(void)
     }
 
     lv_label_set_text(
-        s_ui.orientation_label, s_ui.preview_flip ? "Front" : "Rear");
+        s_ui.orientation_label, s_ui.preview_flip ? "Rear" : "Front");
 }
 
 static void orientation_apply_async(void *arg)
@@ -572,7 +572,7 @@ static void build_camera_screen(void)
         0);
     lv_obj_set_style_radius(s_ui.orientation_label, 8, 0);
     lv_obj_set_height(s_ui.orientation_label, UI_INFO_HIT_SIZE);
-    lv_label_set_text(s_ui.orientation_label, "Rear");
+    lv_label_set_text(s_ui.orientation_label, "Front");
     lv_obj_align(s_ui.orientation_label, LV_ALIGN_LEFT_MID, UI_EDGE_MARGIN, 0);
 
     lv_obj_t *info_btn = create_plain_image_button(

@@ -27,6 +27,10 @@ format with two buffers. A frame remains owned by the caller until
 `mosaico_camera_restart()`, or `mosaico_camera_del()`. Closing capture keeps
 `/dev/video2` registered so another consumer can open it.
 
+The module controls CAM_PWDN (GPIO48 on the left slot): low = normal, high = sleep.
+Opening or starting capture wakes the sensor. Successful initialization, stop,
+close, and deletion leave it asleep.
+
 Software reset may leave camera or display DMA active, causing capture failures
 after reboot. Before `esp_restart()`, the application must stop requesting frames,
 wait for PPA/LCD completion, return borrowed frames, and stop or delete the camera.
