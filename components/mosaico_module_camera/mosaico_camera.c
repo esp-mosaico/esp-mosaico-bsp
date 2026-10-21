@@ -95,6 +95,7 @@ struct mosaico_camera_t {
     bool buffers_queued;
     bool streaming;
     bool power_down;
+    bool pwdn_configured;
     bool resume_stream_after_wake;
     bool tuning_applied;
     esp_cam_sensor_id_t sensor_id;
@@ -389,12 +390,28 @@ static esp_err_t queue_all_buffers(mosaico_camera_handle_t camera)
     return ESP_OK;
 }
 
+/* Board-level polarity, independent of the generic sensor driver's defaults. */
+static esp_err_t set_board_sleep(mosaico_camera_handle_t camera, bool sleep)
+{
+    if (!camera->pwdn_configured) {
+        return ESP_OK;
+    }
+    ESP_RETURN_ON_ERROR(gpio_set_level(camera->hardware.pwdn_io, sleep ? 1 : 0),
+                        TAG, "set camera PWDN failed");
+    if (camera->power_down && !sleep) {
+        vTaskDelay(pdMS_TO_TICKS(CAMERA_PWDN_WAKE_DELAY_MS));
+    }
+    camera->power_down = sleep;
+    return ESP_OK;
+}
+
 static esp_err_t start_stream(mosaico_camera_handle_t camera)
 {
     if (camera->streaming) {
         return ESP_OK;
     }
     ESP_RETURN_ON_FALSE(camera->opened, ESP_ERR_INVALID_STATE, TAG, "camera is not open");
+    ESP_RETURN_ON_ERROR(set_board_sleep(camera, false), TAG, "wake before stream failed");
     int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     ESP_RETURN_ON_ERROR(camera_ioctl(camera->fd, VIDIOC_STREAMON, &type,
                                      "VIDIOC_STREAMON"),
@@ -438,9 +455,7 @@ static esp_err_t close_video_device(mosaico_camera_handle_t camera)
         return ret;
     }
     if (camera->power_down) {
-        ESP_RETURN_ON_ERROR(gpio_set_level(camera->hardware.pwdn_io, 0), TAG, "wake camera before close failed");
-        vTaskDelay(pdMS_TO_TICKS(CAMERA_PWDN_WAKE_DELAY_MS));
-        camera->power_down = false;
+        ESP_RETURN_ON_ERROR(set_board_sleep(camera, false), TAG, "wake camera before close failed");
         camera->resume_stream_after_wake = false;
     }
     camera->opened = false;
@@ -484,7 +499,7 @@ static esp_err_t close_video_device(mosaico_camera_handle_t camera)
     camera->tuning_applied = false;
     memset(&camera->sensor_id, 0, sizeof(camera->sensor_id));
     memset(camera->outstanding, 0, sizeof(camera->outstanding));
-    return ESP_OK;
+    return set_board_sleep(camera, true);
 }
 
 static esp_err_t release_resources(mosaico_camera_handle_t camera)
@@ -500,12 +515,16 @@ static esp_err_t release_resources(mosaico_camera_handle_t camera)
     }
 
     if (camera->video_initialized) {
+        /* Driver teardown may access sensor registers. Sleep again afterwards. */
+        ESP_RETURN_ON_ERROR(set_board_sleep(camera, false), TAG, "wake for deinit failed");
         ret = esp_video_deinit_with_flags(ESP_VIDEO_INIT_FLAGS_DVP);
+        const esp_err_t sleep_ret = set_board_sleep(camera, true);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Deinitialize DVP video failed; context retained: %s", esp_err_to_name(ret));
             return ret;
         }
         camera->video_initialized = false;
+        ESP_RETURN_ON_ERROR(sleep_ret, TAG, "sleep after deinit failed");
     }
 
     if (camera->hardware_claimed) {
@@ -531,6 +550,18 @@ static esp_err_t release_resources(mosaico_camera_handle_t camera)
 
 static esp_err_t initialize_video_device(mosaico_camera_handle_t camera)
 {
+    const gpio_config_t pwdn_config = {
+        .pin_bit_mask = BIT64(camera->hardware.pwdn_io),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_RETURN_ON_ERROR(gpio_set_level(camera->hardware.pwdn_io, 0), TAG, "preset PWDN normal failed");
+    ESP_RETURN_ON_ERROR(gpio_config(&pwdn_config), TAG, "configure PWDN failed");
+    camera->pwdn_configured = true;
+    ESP_RETURN_ON_ERROR(gpio_sleep_sel_dis(camera->hardware.pwdn_io), TAG, "disable PWDN sleep override failed");
+    vTaskDelay(pdMS_TO_TICKS(CAMERA_PWDN_WAKE_DELAY_MS));
     esp_cam_ctlr_dvp_pin_config_t pins = {
         .data_width = CAM_CTLR_DATA_WIDTH_8,
         .data_io = {
@@ -551,7 +582,8 @@ static esp_err_t initialize_video_device(mosaico_camera_handle_t camera)
             .freq = camera->hardware.sccb_freq_hz,
         },
         .reset_pin = camera->hardware.reset_io,
-        .pwdn_pin = camera->hardware.pwdn_io,
+        /* Module owns CAM_PWDN: 0 normal, 1 sleep (including SC101IOT). */
+        .pwdn_pin = GPIO_NUM_NC,
         .dvp_pin = pins,
         .xclk_freq = camera->hardware.xclk_freq_hz,
     };
@@ -566,7 +598,7 @@ static esp_err_t initialize_video_device(mosaico_camera_handle_t camera)
 
     ESP_RETURN_ON_ERROR(configure_flash_idle(camera), TAG, "configure flash GPIO idle failed");
     ESP_LOGI(TAG, "Camera video device registered at %s", ESP_VIDEO_DVP_DEVICE_NAME);
-    return ESP_OK;
+    return set_board_sleep(camera, true);
 }
 
 static esp_err_t open_video_device(mosaico_camera_handle_t camera)
@@ -577,6 +609,7 @@ static esp_err_t open_video_device(mosaico_camera_handle_t camera)
     }
     ESP_RETURN_ON_FALSE(camera->fd < 0, ESP_ERR_INVALID_STATE, TAG, "previous camera open cleanup is incomplete");
 
+    ESP_RETURN_ON_ERROR(set_board_sleep(camera, false), TAG, "wake camera before open failed");
     camera->fd = open(ESP_VIDEO_DVP_DEVICE_NAME, O_RDWR);
     ESP_RETURN_ON_FALSE(camera->fd >= 0, ESP_ERR_NOT_FOUND, TAG,
                         "open %s failed errno=%d",
@@ -806,7 +839,10 @@ esp_err_t mosaico_camera_start_stream(mosaico_camera_handle_t camera)
         xSemaphoreGive(camera->lock);
         return ESP_OK;
     }
-    esp_err_t ret = camera->power_down ? ESP_ERR_INVALID_STATE : queue_all_buffers(camera);
+    esp_err_t ret = set_board_sleep(camera, false);
+    if (ret == ESP_OK) {
+        ret = queue_all_buffers(camera);
+    }
     if (ret == ESP_OK) {
         ret = start_stream(camera);
     }
@@ -822,6 +858,9 @@ esp_err_t mosaico_camera_start_stream(mosaico_camera_handle_t camera)
     }
     if (ret != ESP_OK) {
         const esp_err_t stop_ret = stop_stream(camera);
+        if (stop_ret == ESP_OK) {
+            (void)set_board_sleep(camera, true);
+        }
         if (stop_ret != ESP_OK) {
             ESP_LOGE(TAG, "Rollback failed camera start: %s", esp_err_to_name(stop_ret));
         }
@@ -834,7 +873,11 @@ esp_err_t mosaico_camera_stop_stream(mosaico_camera_handle_t camera)
 {
     ESP_RETURN_ON_FALSE(camera, ESP_ERR_INVALID_ARG, TAG, "camera handle is null");
     xSemaphoreTake(camera->lock, portMAX_DELAY);
-    const esp_err_t ret = stop_stream(camera);
+    esp_err_t ret = stop_stream(camera);
+    if (ret == ESP_OK) {
+        ret = set_board_sleep(camera, true);
+        camera->resume_stream_after_wake = false;
+    }
     xSemaphoreGive(camera->lock);
     return ret;
 }
@@ -1266,9 +1309,8 @@ esp_err_t mosaico_camera_set_power_down(mosaico_camera_handle_t camera, bool sle
         const bool resume_stream = camera->streaming;
         camera->resume_stream_after_wake = false;
         ret = stop_stream(camera);
-        if (ret == ESP_OK &&
-            gpio_set_level(camera->hardware.pwdn_io, 1) != ESP_OK) {
-            ret = ESP_FAIL;
+        if (ret == ESP_OK) {
+            ret = set_board_sleep(camera, true);
         }
         if (ret == ESP_OK) {
             camera->resume_stream_after_wake = resume_stream;
@@ -1282,16 +1324,15 @@ esp_err_t mosaico_camera_set_power_down(mosaico_camera_handle_t camera, bool sle
             }
         }
     } else {
-        if (gpio_set_level(camera->hardware.pwdn_io, 0) != ESP_OK) {
-            ret = ESP_FAIL;
-        } else {
-            vTaskDelay(pdMS_TO_TICKS(CAMERA_PWDN_WAKE_DELAY_MS));
-            if (camera->resume_stream_after_wake) {
-                ret = queue_all_buffers(camera);
-            }
-            if (ret == ESP_OK && camera->resume_stream_after_wake) {
+        ret = set_board_sleep(camera, false);
+        if (ret == ESP_OK && camera->resume_stream_after_wake) {
+            ret = queue_all_buffers(camera);
+            if (ret == ESP_OK) {
                 ret = start_stream(camera);
             }
+        }
+        if (ret != ESP_OK && !camera->streaming) {
+            (void)set_board_sleep(camera, true);
         }
     }
 
