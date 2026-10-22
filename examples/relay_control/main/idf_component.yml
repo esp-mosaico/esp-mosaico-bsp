@@ -1,0 +1,8 @@
+dependencies:
+  idf: ">=6.2"
+  mosaico_module_relay:
+    path: ../../../components/mosaico_module_relay
+  mosaico_module_mgr:
+    path: ../../../components/mosaico_module_mgr
+  esp-mosaico-bsp:
+    path: ../../../components/esp-mosaico-bsp
