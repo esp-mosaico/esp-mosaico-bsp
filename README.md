@@ -108,7 +108,7 @@ Run `idf.py menuconfig` and open `ESP-Mosaico BSP` to configure the board-specif
 | [`mosaico_module_camera`](components/mosaico_module_camera) | Managed OV3640/SC101IOT DVP capture, explicit frame lifecycle, flash control, and optional hardware JPEG decoding helpers | Left only |
 | [`mosaico_module_joystick`](components/mosaico_module_joystick) | Dual-axis joystick with five buttons and non-blocking calibration | Left or right |
 | [`mosaico_module_interact`](components/mosaico_module_interact) | Touch/GPIO buttons, PIR motion, ambient light, six WS2812 LEDs, and NEC infrared transmission | Left or right |
-| [`mosaico_module_tof`](components/mosaico_module_tof) | Automatic VL53L4CD (default) / VL53L0X identification, ranging, and board initialization | Left or right, one module |
+| [`mosaico_module_tof`](components/mosaico_module_tof) | Automatic VL53L4CD (default) / VL53L0X identification, ranging, and board initialization | Left and/or right with coordinated addressing |
 | [`mosaico_module_thermal`](components/mosaico_module_thermal) | MLX90640 thermal imaging with complete frame acquisition, bad pixel correction, and timeout handling | Left or right, one module on the shared bus |
 | [`mosaico_module_relay`](components/mosaico_module_relay) | Four-channel active-high relay control with inactive startup and explicit slot ownership | Left or right |
 | [`mosaico_module_matrix_led`](components/mosaico_module_matrix_led) | 8 x 8 WS2812 matrix with buffered pixel writes and RMT DMA output | Left or right |
@@ -157,7 +157,7 @@ These examples use a Camera module in the left expansion slot through `mosaico_m
 | Example | Description | Additional hardware |
 | --- | --- | --- |
 | [`interaction_board_demo`](examples/interaction_board_demo) | Hot-plug dashboard for touch/GPIO buttons, PIR, light, six LEDs, and NEC IR transmission | One Interaction module in either slot |
-| [`tof_distance`](examples/tof_distance) | ToF module discovery, automatic sensor selection, hot-plug recovery, live display dashboard, and serial distance readings | One module using VL53L4CDV0DH/1 (default) or VL53L0CXV0DH/1, with a valid EEPROM descriptor |
+| [`tof_distance`](examples/tof_distance) | Single/dual-slot ToF dashboard, automatic sensor selection, address assignment, gestures, and hot-plug recovery | One or two ToF modules using VL53L4CDV0DH/1 (default) or VL53L0CXV0DH/1, with valid EEPROM descriptors |
 | [`thermal_camera`](examples/thermal_camera) | Thermal module discovery, temperature display, and reconnection retries | One MLX90640 module with a valid EEPROM descriptor |
 | [`relay_control`](examples/relay_control) | Four-channel touch console, all-on/all-off toggle, and module discovery | One Relay module with a valid EEPROM descriptor in either slot |
 | [`matrix_rgb_led`](examples/matrix_rgb_led) | Eight looping 8 x 8 RGB animations with LCD preview, slot discovery, and hot-plug recovery | One Matrix LED module with a valid EEPROM descriptor in either slot |

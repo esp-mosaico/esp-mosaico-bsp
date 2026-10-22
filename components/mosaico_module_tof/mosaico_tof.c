@@ -23,6 +23,7 @@ typedef enum {
 
 struct mosaico_tof {
     sensor_model_t model;
+    i2c_master_bus_handle_t bus;
     gpio_num_t xshut;
     vl53l0x_handle_t l0x;
     mosaico_l4cd_platform_t l4cd;
@@ -98,6 +99,7 @@ static esp_err_t open_sensor(bsp_subboard_slot_t slot, mosaico_tof_handle_t *out
     ESP_RETURN_ON_FALSE(bus, ESP_ERR_INVALID_STATE, TAG, "subboard bus not initialized");
     mosaico_tof_handle_t sensor = calloc(1, sizeof(*sensor));
     ESP_RETURN_ON_FALSE(sensor, ESP_ERR_NO_MEM, TAG, "allocate sensor failed");
+    sensor->bus = bus;
     sensor->xshut = bsp_subboard_map_gpio(slot, GPIO_NUM_48);
     esp_err_t ret;
     const i2c_device_config_t config = {
@@ -172,6 +174,73 @@ const char *mosaico_tof_model_name(mosaico_tof_handle_t sensor)
            sensor->model == SENSOR_VL53L4CD ? "VL53L4CD" : "UNKNOWN";
 }
 
+esp_err_t mosaico_tof_set_address(mosaico_tof_handle_t sensor, uint8_t address)
+{
+    ESP_RETURN_ON_FALSE(sensor && address >= 0x08 && address <= 0x77 && address != 0x29,
+                        ESP_ERR_INVALID_ARG, TAG, "invalid sensor address");
+    if (sensor->model == SENSOR_VL53L0X) {
+        return vl53l0x_set_address(sensor->l0x, sensor->bus, address);
+    }
+    ESP_RETURN_ON_FALSE(sensor->model == SENSOR_VL53L4CD, ESP_ERR_INVALID_STATE, TAG, "unknown sensor model");
+    /* ST's API takes the 8-bit address; ESP-IDF takes the 7-bit address. */
+    ESP_RETURN_ON_ERROR(l4cd_status(sensor, "set address", VL53L4CD_SetI2CAddress(&sensor->l4cd, address << 1)),
+                        TAG, "set VL53L4CD address failed");
+    ESP_RETURN_ON_ERROR(i2c_master_bus_rm_device(sensor->l4cd.i2c), TAG, "remove old I2C device failed");
+    sensor->l4cd.i2c = NULL;
+    const i2c_device_config_t config = {
+        .device_address = address,
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .scl_speed_hz = VL53L0X_I2C_DEFAULT_FREQ_HZ,
+    };
+    return i2c_master_bus_add_device(sensor->bus, &config, &sensor->l4cd.i2c);
+}
+
+esp_err_t mosaico_tof_set_timing_budget(mosaico_tof_handle_t sensor, uint32_t budget_us)
+{
+    ESP_RETURN_ON_FALSE(sensor, ESP_ERR_INVALID_ARG, TAG, "null sensor handle");
+    if (sensor->model == SENSOR_VL53L0X) {
+        return vl53l0x_set_timing_budget(sensor->l0x, budget_us);
+    }
+    ESP_RETURN_ON_FALSE(sensor->model == SENSOR_VL53L4CD && budget_us >= 10000 &&
+                        budget_us <= 200000 && budget_us % 1000 == 0,
+                        ESP_ERR_INVALID_ARG, TAG, "invalid VL53L4CD timing budget");
+    ESP_RETURN_ON_ERROR(l4cd_status(sensor, "stop for timing", VL53L4CD_StopRanging(&sensor->l4cd)), TAG, "stop VL53L4CD failed");
+    sensor->ranging = false;
+    ESP_RETURN_ON_ERROR(l4cd_status(sensor, "set timing", VL53L4CD_SetRangeTiming(&sensor->l4cd, budget_us / 1000, 0)), TAG, "set VL53L4CD timing failed");
+    ESP_RETURN_ON_ERROR(l4cd_status(sensor, "restart ranging", VL53L4CD_StartRanging(&sensor->l4cd)), TAG, "restart VL53L4CD failed");
+    sensor->ranging = true;
+    return ESP_OK;
+}
+
+esp_err_t mosaico_tof_get_offset_calibration(mosaico_tof_handle_t sensor, int32_t *offset_um)
+{
+    ESP_RETURN_ON_FALSE(sensor && offset_um, ESP_ERR_INVALID_ARG, TAG, "invalid offset arguments");
+    if (sensor->model == SENSOR_VL53L0X) {
+        return vl53l0x_get_offset_calibration(sensor->l0x, offset_um);
+    }
+    ESP_RETURN_ON_FALSE(sensor->model == SENSOR_VL53L4CD, ESP_ERR_INVALID_STATE, TAG, "unknown sensor model");
+    uint16_t value = 0;
+    ESP_RETURN_ON_ERROR(l4cd_status(sensor, "read offset", VL53L4CD_RdWord(&sensor->l4cd, VL53L4CD_RANGE_OFFSET_MM, &value)), TAG, "read offset failed");
+    /* Keep the signed 13-bit quarter-millimeter value, including factory fractions. */
+    int32_t quarters = value & 0x1FFF;
+    if (quarters & 0x1000) quarters -= 0x2000;
+    *offset_um = quarters * 250;
+    return ESP_OK;
+}
+
+esp_err_t mosaico_tof_set_offset_calibration(mosaico_tof_handle_t sensor, int32_t offset_um)
+{
+    ESP_RETURN_ON_FALSE(sensor && offset_um >= -512000 && offset_um <= 511000 && offset_um % 250 == 0,
+                        ESP_ERR_INVALID_ARG, TAG, "invalid distance offset");
+    if (sensor->model == SENSOR_VL53L0X) {
+        return vl53l0x_set_offset_calibration(sensor->l0x, offset_um);
+    }
+    ESP_RETURN_ON_FALSE(sensor->model == SENSOR_VL53L4CD, ESP_ERR_INVALID_STATE, TAG, "unknown sensor model");
+    /* Adjust only the main offset; retain the other factory calibration registers. */
+    uint16_t value = (uint16_t)(offset_um / 250) & 0x1FFF;
+    return l4cd_status(sensor, "write offset", VL53L4CD_WrWord(&sensor->l4cd, VL53L4CD_RANGE_OFFSET_MM, value));
+}
+
 esp_err_t mosaico_tof_read(mosaico_tof_handle_t sensor, mosaico_tof_data_t *data)
 {
     ESP_RETURN_ON_FALSE(sensor && data, ESP_ERR_INVALID_ARG, TAG, "invalid read arguments");
@@ -207,7 +276,7 @@ esp_err_t mosaico_tof_read(mosaico_tof_handle_t sensor, mosaico_tof_data_t *data
 esp_err_t mosaico_tof_close(mosaico_tof_handle_t sensor)
 {
     ESP_RETURN_ON_FALSE(sensor, ESP_ERR_INVALID_ARG, TAG, "null sensor handle");
-    if (sensor->ranging) {
+    if (sensor->ranging && sensor->l4cd.i2c) {
         /* Removal can make the final bus write fail; still release host resources. */
         sensor->l4cd.error = ESP_OK;
         uint8_t status = VL53L4CD_StopRanging(&sensor->l4cd);
