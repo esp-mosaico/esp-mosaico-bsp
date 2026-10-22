@@ -1,0 +1,39 @@
+menu "ToF Distance Demo"
+
+    config TOF_DISTANCE_OFFSET_ADJUST_MM
+        int "Left slot additional distance offset (mm)"
+        range -200 200
+        default -37
+        help
+            Added to the sensor's initial offset after each hardware reset.
+            Negative values reduce the measured distance. The -37 mm default
+            is specific to a board reading 137 mm at a known 100 mm distance.
+            Use 0 to disable this additional compensation. Re-measure when
+            changing the sensor board or its optical/mechanical assembly.
+
+    config TOF_DISTANCE_RIGHT_OFFSET_ADJUST_MM
+        int "Right slot additional distance offset (mm)"
+        range -200 200
+        default -37
+        help
+            Independent adjustment for the right sensor. Defaults to the same
+            -37 mm correction as the left sensor. Verify accuracy on each board.
+            Negative values reduce range.
+
+    config TOF_GESTURE_THRESHOLD_MM
+        int "Gesture distance excursion threshold (mm)"
+        range 20 500
+        default 60
+        help
+            Minimum distance change relative to the stable background.
+            A pulse completes after returning within half this threshold.
+
+    config TOF_GESTURE_WINDOW_MS
+        int "Gesture completion window (ms)"
+        range 500 3000
+        default 1500
+        help
+            Both sensors must complete their excursions within this time
+            from the first excursion. Invalid data cancels the gesture.
+
+endmenu
