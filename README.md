@@ -110,9 +110,10 @@ Run `idf.py menuconfig` and open `ESP-Mosaico BSP` to configure the board-specif
 | [`mosaico_module_interact`](components/mosaico_module_interact) | Touch/GPIO buttons, PIR motion, ambient light, six WS2812 LEDs, and NEC infrared transmission | Left or right |
 | [`mosaico_module_tof`](components/mosaico_module_tof) | VL53L0X single-shot ranging and board initialization | Left or right, one module |
 | [`mosaico_module_thermal`](components/mosaico_module_thermal) | MLX90640 thermal imaging with complete frame acquisition, bad pixel correction, and timeout handling | Left or right, one module on the shared bus |
+| [`mosaico_module_relay`](components/mosaico_module_relay) | Four-channel active-high relay control with inactive startup and explicit slot ownership | Left or right |
 | [`mosaico_module_matrix_led`](components/mosaico_module_matrix_led) | 8 x 8 WS2812 matrix with buffered pixel writes and RMT DMA output | Left or right |
 
-The two slots share the subboard I2C bus and other board resources. `mosaico_module_mgr` validates EEPROM descriptors, reports presence and ownership changes, and provides exclusive slot claims. Camera, Joystick, and Interaction drivers discover and claim their slots automatically. The Matrix LED driver takes an explicit slot; the application must enable board power, claim the slot, and release it after deleting the LED strip, as shown in [`matrix_rgb_led`](examples/matrix_rgb_led).
+The two slots share the subboard I2C bus and other board resources. `mosaico_module_mgr` validates EEPROM descriptors, reports presence and ownership changes, and provides exclusive slot claims. Camera, Joystick, and Interaction drivers discover and claim their slots automatically. The Matrix LED and Relay drivers take an explicit slot; the application must enable board power, claim the slot, and release it after deleting the driver, as shown in [`relay_control`](examples/relay_control) and [`matrix_rgb_led`](examples/matrix_rgb_led).
 
 Standard module EEPROMs use `0x50` in the left slot and `0x51` in the right slot. The Camera module has a fixed `0x50` address and supports only the left slot. EEPROM board-type definitions and programmer profiles do not imply that a dedicated runtime driver exists for every module type.
 
@@ -158,6 +159,7 @@ These examples use a Camera module in the left expansion slot through `mosaico_m
 | [`interaction_board_demo`](examples/interaction_board_demo) | Hot-plug dashboard for touch/GPIO buttons, PIR, light, six LEDs, and NEC IR transmission | One Interaction module in either slot |
 | [`tof_distance`](examples/tof_distance) | ToF module discovery, hot-plug recovery in either slot, live display dashboard, and serial distance readings | One VL53L0X module with a valid EEPROM descriptor |
 | [`thermal_camera`](examples/thermal_camera) | Thermal module discovery, temperature display, and reconnection retries | One MLX90640 module with a valid EEPROM descriptor |
+| [`relay_control`](examples/relay_control) | Four touch-controlled relay channels, all-off action, and module discovery | One Relay module with a valid EEPROM descriptor in either slot |
 | [`matrix_rgb_led`](examples/matrix_rgb_led) | Eight looping 8 x 8 RGB animations with LCD preview, slot discovery, and hot-plug recovery | One Matrix LED module with a valid EEPROM descriptor in either slot |
 | [`module_slot_scan`](examples/module_slot_scan) | Split-screen slot monitor with left-slot camera preview, Interaction controls, and names for other identified modules | Modules to insert or remove from the two slots |
 | [`module_eeprom_programmer`](examples/module_eeprom_programmer) | Touchscreen selection, writing, and read-back verification of AT24C02 module descriptors | One module at a time; manufacturing/provisioning tool |
