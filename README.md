@@ -159,7 +159,7 @@ These examples use a Camera module in the left expansion slot through `mosaico_m
 | [`interaction_board_demo`](examples/interaction_board_demo) | Hot-plug dashboard for touch/GPIO buttons, PIR, light, six LEDs, and NEC IR transmission | One Interaction module in either slot |
 | [`tof_distance`](examples/tof_distance) | ToF module discovery, hot-plug recovery in either slot, live display dashboard, and serial distance readings | One VL53L0X module with a valid EEPROM descriptor |
 | [`thermal_camera`](examples/thermal_camera) | Thermal module discovery, temperature display, and reconnection retries | One MLX90640 module with a valid EEPROM descriptor |
-| [`relay_control`](examples/relay_control) | Four touch-controlled relay channels, all-off action, and module discovery | One Relay module with a valid EEPROM descriptor in either slot |
+| [`relay_control`](examples/relay_control) | Four-channel touch console, all-on/all-off toggle, and module discovery | One Relay module with a valid EEPROM descriptor in either slot |
 | [`matrix_rgb_led`](examples/matrix_rgb_led) | Eight looping 8 x 8 RGB animations with LCD preview, slot discovery, and hot-plug recovery | One Matrix LED module with a valid EEPROM descriptor in either slot |
 | [`module_slot_scan`](examples/module_slot_scan) | Split-screen slot monitor with left-slot camera preview, Interaction controls, and names for other identified modules | Modules to insert or remove from the two slots |
 | [`module_eeprom_programmer`](examples/module_eeprom_programmer) | Touchscreen selection, writing, and read-back verification of AT24C02 module descriptors | One module at a time; manufacturing/provisioning tool |
