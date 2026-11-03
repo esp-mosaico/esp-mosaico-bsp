@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "sdkconfig.h"
 #include "driver/spi_master.h"
 #include "esp_err.h"
 #include "spi_nand_flash.h"
@@ -14,12 +15,17 @@
 extern "C" {
 #endif
 
+/* The Kconfig selection supplies the default; callers can override it below. */
+#ifdef CONFIG_BSP_NAND_FLASH_CLOCK_40M
 #define BSP_NAND_FLASH_DEFAULT_CLOCK_HZ        (40 * 1000 * 1000)
+#else
+#define BSP_NAND_FLASH_DEFAULT_CLOCK_HZ        (80 * 1000 * 1000)
+#endif
 #define BSP_NAND_FLASH_DEFAULT_QUEUE_SIZE      10
 #define BSP_NAND_FLASH_DEFAULT_MAX_TRANSFER_SZ (4 * 1024)
 
 typedef struct {
-    int clock_speed_hz;
+    int clock_speed_hz; /**< Working clock in Hz; zero uses the Kconfig default. */
     int queue_size;
     int max_transfer_sz;
     uint8_t gc_factor;

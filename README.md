@@ -77,7 +77,7 @@ Run `idf.py menuconfig` and open `ESP-Mosaico BSP` to configure the board-specif
 
 - CO5300 tearing-effect synchronization
 - LCD QSPI drive strength
-- SPI NAND QIO mode
+- Default SPI NAND clock frequency (40 or 80 MHz)
 - Motor PWM control
 - VCC 3.3 V soft-start time
 

@@ -18,6 +18,7 @@ static bool s_power_save;
 #define NAND_CMD_READ_ID     0x9F
 #define NAND_FEATURE_CONFIG  0xB0
 #define NAND_CONFIG_QE_BIT   BIT(0)
+#define NAND_BOOTSTRAP_MAX_CLOCK_HZ (20 * 1000 * 1000)
 
 static esp_err_t release_resources(void)
 {
@@ -135,6 +136,12 @@ static esp_err_t enable_quad_mode(spi_device_handle_t spi)
 
 static esp_err_t bootstrap_quad_mode(const spi_device_interface_config_t *device_config, int max_transfer_sz)
 {
+    /* IO2/IO3 are still WP/HOLD until QE is enabled. Use a low single-IO
+     * clock for detection/configuration, preserving slower caller settings. */
+    spi_device_interface_config_t bootstrap_config = *device_config;
+    if (bootstrap_config.clock_speed_hz > NAND_BOOTSTRAP_MAX_CLOCK_HZ) {
+        bootstrap_config.clock_speed_hz = NAND_BOOTSTRAP_MAX_CLOCK_HZ;
+    }
     const spi_bus_config_t bus_config = {
         .mosi_io_num = BSP_NAND_D,
         .miso_io_num = BSP_NAND_Q,
@@ -148,7 +155,7 @@ static esp_err_t bootstrap_quad_mode(const spi_device_interface_config_t *device
         return ret;
     }
     s_bus_initialized = true;
-    ret = spi_bus_add_device(BSP_NAND_SPI_HOST, device_config, &s_spi_device);
+    ret = spi_bus_add_device(BSP_NAND_SPI_HOST, &bootstrap_config, &s_spi_device);
     if (ret == ESP_OK) {
         ret = enable_quad_mode(s_spi_device);
     }
@@ -224,6 +231,13 @@ esp_err_t bsp_nand_flash_init(const bsp_nand_flash_config_t *config, spi_nand_fl
     ESP_LOGI(TAG, "SPI NAND initialized on SPI3: CLK=%d CS=%d D=%d Q=%d HOLD=%d WP=%d mode=%d freq=%d",
              BSP_NAND_CLK, BSP_NAND_CS, BSP_NAND_D, BSP_NAND_Q, BSP_NAND_HOLD, BSP_NAND_WP,
              active.io_mode, active.clock_speed_hz);
+    int actual_khz = 0;
+    esp_err_t clock_ret = spi_device_get_actual_freq(s_spi_device, &actual_khz);
+    if (clock_ret == ESP_OK) {
+        ESP_LOGI(TAG, "SPI NAND clock: requested_hz=%d actual_khz=%d", active.clock_speed_hz, actual_khz);
+    } else {
+        ESP_LOGW(TAG, "Read SPI NAND clock failed: %s", esp_err_to_name(clock_ret));
+    }
     return ESP_OK;
 }
 
