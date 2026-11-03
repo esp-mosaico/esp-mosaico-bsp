@@ -10,5 +10,5 @@
 
 esp_err_t tof_ui_init(void);
 void tof_ui_status(const char *message, const char *detail);
-void tof_ui_update(const vl53l0x_data_t *data);
-void tof_ui_set_slot(mosaico_module_mgr_slot_t slot);
+void tof_ui_update(const mosaico_tof_data_t *data);
+void tof_ui_set_slot(mosaico_module_mgr_slot_t slot, const char *model);

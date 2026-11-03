@@ -113,7 +113,7 @@ void tof_ui_status(const char *message, const char *detail)
     bsp_display_unlock();
 }
 
-void tof_ui_update(const vl53l0x_data_t *data)
+void tof_ui_update(const mosaico_tof_data_t *data)
 {
     if (!bsp_display_lock(-1)) {
         return;
@@ -141,12 +141,12 @@ void tof_ui_update(const vl53l0x_data_t *data)
     bsp_display_unlock();
 }
 
-void tof_ui_set_slot(mosaico_module_mgr_slot_t slot)
+void tof_ui_set_slot(mosaico_module_mgr_slot_t slot, const char *model)
 {
     if (!bsp_display_lock(-1)) {
         return;
     }
     const char *slot_name = slot == MOSAICO_MODULE_MGR_SLOT_LEFT ? "LEFT SLOT" : "RIGHT SLOT";
-    lv_label_set_text_fmt(s_slot, "TIME OF FLIGHT  /  %s", slot_name);
+    lv_label_set_text_fmt(s_slot, "%s  /  %s", model, slot_name);
     bsp_display_unlock();
 }
