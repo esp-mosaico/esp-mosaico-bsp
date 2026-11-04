@@ -1,0 +1,8 @@
+description: NAND Flash translation layer
+issues: https://github.com/espressif/idf-extra-components/issues
+repository: git://github.com/espressif/idf-extra-components.git
+repository_info:
+  commit_sha: 4d842853e0bd625aa9a1e86366955b8feb676c27
+  path: dhara
+url: https://github.com/espressif/idf-extra-components/tree/master/dhara
+version: 1.1.0
