@@ -92,11 +92,14 @@ typedef struct {
     mosaico_module_lease_t lease;
     mosaico_tof_handle_t sensor;
     bool ready;
+    bool is_l0x;
     bool cleanup;
     TickType_t retry_at;
     mosaico_tof_data_t sample;
     uint32_t sample_ms;
     bool fresh;
+    bool have_sample;
+    uint32_t last_result_ms;
     uint32_t last_log_ms;
     unsigned reads, valid_reads;
     uint32_t read_total_ms, read_max_ms;
@@ -143,6 +146,7 @@ static esp_err_t close_slot(slot_state_t *state)
 static void retire_slot(slot_state_t *state, const char *message)
 {
     state->ready = false;
+    state->fresh = state->have_sample = false;
     state->cleanup = true;
     tof_ui_status(state->slot, message);
     esp_err_t ret = close_slot(state);
@@ -191,6 +195,9 @@ static void service_slot(slot_state_t *state)
             /* 20 ms per sensor; retain the driver's signal/sigma validity checks. */
             ret = mosaico_tof_set_timing_budget(state->sensor, 20000);
         }
+        if (ret == ESP_OK) {
+            ret = mosaico_tof_start_continuous(state->sensor);
+        }
         if (ret != ESP_OK) {
             ESP_LOGW(TAG, "Initialize %s failed: %s",
                      mosaico_module_mgr_slot_to_name(state->slot), esp_err_to_name(ret));
@@ -198,24 +205,36 @@ static void service_slot(slot_state_t *state)
             return;
         }
         state->ready = true;
+        state->is_l0x = strcmp(mosaico_tof_model_name(state->sensor), "VL53L0X") == 0;
+        state->last_result_ms = (uint32_t)(esp_timer_get_time() / 1000);
         tof_ui_set_sensor(state->slot, mosaico_tof_model_name(state->sensor));
     }
     mosaico_tof_data_t data = {0};
     uint32_t measure_started_ms = (uint32_t)(esp_timer_get_time() / 1000);
-    esp_err_t ret = mosaico_tof_read(state->sensor, &data);
+    bool sample_ready = false;
+    esp_err_t ret = mosaico_tof_read_ready(state->sensor, &data, &sample_ready);
     uint32_t measure_finished_ms = (uint32_t)(esp_timer_get_time() / 1000);
     if (ret != ESP_OK || !tof_present(state->slot)) {
         retire_slot(state, "RECONNECTING");
         return;
     }
+    if (!sample_ready) {
+        if (measure_finished_ms - state->last_result_ms >= 500) {
+            ESP_LOGW(TAG, "No new sample: slot=%s", mosaico_module_mgr_slot_to_name(state->slot));
+            retire_slot(state, "RECONNECTING");
+        }
+        return;
+    }
+    state->last_result_ms = measure_finished_ms;
     state->sample = data;
     ++state->reads;
     if (data.valid) ++state->valid_reads;
     uint32_t read_ms = measure_finished_ms - measure_started_ms;
     state->read_total_ms += read_ms;
     if (read_ms > state->read_max_ms) state->read_max_ms = read_ms;
-    /* Approximate the measurement's effective time by its acquisition midpoint. */
-    state->sample_ms = measure_started_ms + (measure_finished_ms - measure_started_ms) / 2;
+    /* Each sensor acquires independently; use its own data-ready observation. */
+    state->sample_ms = data.timestamp_ms;
+    state->have_sample = true;
     state->fresh = true;
     if (data.valid && state->sample_ms - state->last_log_ms >= 1000) {
         state->last_log_ms = state->sample_ms;
@@ -252,22 +271,22 @@ void app_main(void)
     uint32_t loop_max_ms = 0, ui_max_ms = 0;
     while (true) {
         uint32_t loop_started_ms = (uint32_t)(esp_timer_get_time() / 1000);
-        slots[0].fresh = slots[1].fresh = false;
-        /* Balance acquisition phase instead of permanently favoring one side. */
+        /* Poll without waiting: both sensors are already acquiring concurrently. */
         service_slot(&slots[right_first ? 1 : 0]);
         service_slot(&slots[right_first ? 0 : 1]);
         right_first = !right_first;
         uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
-        bool left_valid = slots[0].ready && slots[0].fresh && slots[0].sample.valid &&
+        bool left_valid = slots[0].ready && slots[0].have_sample && slots[0].sample.valid &&
                           now_ms - slots[0].sample_ms <= 500;
-        bool right_valid = slots[1].ready && slots[1].fresh && slots[1].sample.valid &&
+        bool right_valid = slots[1].ready && slots[1].have_sample && slots[1].sample.valid &&
                            now_ms - slots[1].sample_ms <= 500;
         bool online = slots[0].ready && slots[1].ready;
+        bool pair_fresh = online && slots[0].fresh && slots[1].fresh;
         tof_hand_input_t input[2];
         for (unsigned i = 0; i < 2; ++i) {
-            input[i] = slots[i].ready && slots[i].fresh ?
-                tof_hand_classify(slots[i].sample.valid, slots[i].sample.distance_mm,
-                                  slots[i].sample.range_status, CONFIG_TOF_GESTURE_NEAR_MM) : TOF_HAND_UNKNOWN;
+            input[i] = slots[i].ready && slots[i].have_sample && now_ms - slots[i].sample_ms <= 500 ?
+                tof_hand_classify_model(slots[i].is_l0x, slots[i].sample.valid, slots[i].sample.distance_mm,
+                                        slots[i].sample.range_status, CONFIG_TOF_GESTURE_NEAR_MM) : TOF_HAND_UNKNOWN;
         }
         bool available = online && input[0] != TOF_HAND_UNKNOWN && input[1] != TOF_HAND_UNKNOWN;
         bool cooling = have_gesture && now_ms - last_gesture_ms < 800U;
@@ -275,7 +294,7 @@ void app_main(void)
         if (!online || cooling) {
             tof_gesture_init(&gesture, CONFIG_TOF_GESTURE_THRESHOLD_MM, CONFIG_TOF_GESTURE_WINDOW_MS);
             tof_hand_gesture_init(&hand, CONFIG_TOF_GESTURE_WINDOW_MS);
-        } else {
+        } else if (pair_fresh) {
             event = tof_hand_gesture_update(&hand, now_ms, input[0], slots[0].sample_ms,
                                            input[1], slots[1].sample_ms);
             /* Once the empty-field detector is armed, it owns the full gesture.
@@ -299,7 +318,7 @@ void app_main(void)
             uint32_t ui_started_ms = (uint32_t)(esp_timer_get_time() / 1000);
             last_ui_ms = now_ms;
             for (size_t i = 0; i < sizeof(slots) / sizeof(slots[0]); ++i) {
-                if (slots[i].ready && slots[i].fresh) {
+                if (slots[i].ready && slots[i].have_sample) {
                     tof_ui_update(slots[i].slot, &slots[i].sample);
                 }
             }
@@ -310,10 +329,12 @@ void app_main(void)
         if (event != TOF_GESTURE_NONE) {
             ESP_LOGI(TAG, "Gesture: SWIPE %s", event == TOF_GESTURE_RIGHT ? "RIGHT" : "LEFT");
         }
-        if (slots[0].fresh && slots[1].fresh) {
+        if (pair_fresh) {
             ++paired_frames;
             if (left_valid) ++valid_pairs_left;
             if (right_valid) ++valid_pairs_right;
+            /* A not-ready poll must never replay an old sample into detection. */
+            slots[0].fresh = slots[1].fresh = false;
         }
         uint32_t rate_elapsed_ms = now_ms - rate_started_ms;
         uint32_t loop_ms = (uint32_t)(esp_timer_get_time() / 1000) - loop_started_ms;
@@ -345,8 +366,8 @@ void app_main(void)
                 slots[i].read_total_ms = slots[i].read_max_ms = 0;
             }
         }
-        /* Yield one tick while sampling (1 ms at the configured 1000 Hz tick rate).
+        /* Yield at least 2 ms, independent of the sensors' integration budgets.
          * Idle discovery can sleep longer without affecting active sensors. */
-        vTaskDelay(slots[0].ready || slots[1].ready ? 1 : pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(slots[0].ready || slots[1].ready ? 2 : 100) + 1);
     }
 }

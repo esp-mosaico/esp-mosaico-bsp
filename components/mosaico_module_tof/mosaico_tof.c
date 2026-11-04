@@ -179,6 +179,7 @@ esp_err_t mosaico_tof_set_address(mosaico_tof_handle_t sensor, uint8_t address)
     ESP_RETURN_ON_FALSE(sensor && address >= 0x08 && address <= 0x77 && address != 0x29,
                         ESP_ERR_INVALID_ARG, TAG, "invalid sensor address");
     if (sensor->model == SENSOR_VL53L0X) {
+        ESP_RETURN_ON_FALSE(!sensor->ranging, ESP_ERR_INVALID_STATE, TAG, "configure address before continuous ranging");
         return vl53l0x_set_address(sensor->l0x, sensor->bus, address);
     }
     ESP_RETURN_ON_FALSE(sensor->model == SENSOR_VL53L4CD, ESP_ERR_INVALID_STATE, TAG, "unknown sensor model");
@@ -199,6 +200,7 @@ esp_err_t mosaico_tof_set_timing_budget(mosaico_tof_handle_t sensor, uint32_t bu
 {
     ESP_RETURN_ON_FALSE(sensor, ESP_ERR_INVALID_ARG, TAG, "null sensor handle");
     if (sensor->model == SENSOR_VL53L0X) {
+        ESP_RETURN_ON_FALSE(!sensor->ranging, ESP_ERR_INVALID_STATE, TAG, "configure timing before continuous ranging");
         return vl53l0x_set_timing_budget(sensor->l0x, budget_us);
     }
     ESP_RETURN_ON_FALSE(sensor->model == SENSOR_VL53L4CD && budget_us >= 10000 &&
@@ -233,6 +235,7 @@ esp_err_t mosaico_tof_set_offset_calibration(mosaico_tof_handle_t sensor, int32_
     ESP_RETURN_ON_FALSE(sensor && offset_um >= -512000 && offset_um <= 511000 && offset_um % 250 == 0,
                         ESP_ERR_INVALID_ARG, TAG, "invalid distance offset");
     if (sensor->model == SENSOR_VL53L0X) {
+        ESP_RETURN_ON_FALSE(!sensor->ranging, ESP_ERR_INVALID_STATE, TAG, "configure offset before continuous ranging");
         return vl53l0x_set_offset_calibration(sensor->l0x, offset_um);
     }
     ESP_RETURN_ON_FALSE(sensor->model == SENSOR_VL53L4CD, ESP_ERR_INVALID_STATE, TAG, "unknown sensor model");
@@ -241,25 +244,45 @@ esp_err_t mosaico_tof_set_offset_calibration(mosaico_tof_handle_t sensor, int32_
     return l4cd_status(sensor, "write offset", VL53L4CD_WrWord(&sensor->l4cd, VL53L4CD_RANGE_OFFSET_MM, value));
 }
 
-esp_err_t mosaico_tof_read(mosaico_tof_handle_t sensor, mosaico_tof_data_t *data)
+esp_err_t mosaico_tof_start_continuous(mosaico_tof_handle_t sensor)
 {
-    ESP_RETURN_ON_FALSE(sensor && data, ESP_ERR_INVALID_ARG, TAG, "invalid read arguments");
-    memset(data, 0, sizeof(*data));
+    ESP_RETURN_ON_FALSE(sensor, ESP_ERR_INVALID_ARG, TAG, "null sensor handle");
+    if (sensor->ranging) return ESP_OK;
+    ESP_RETURN_ON_FALSE(sensor->model == SENSOR_VL53L0X, ESP_ERR_INVALID_STATE, TAG, "sensor is not ranging");
+    ESP_RETURN_ON_ERROR(vl53l0x_set_mode(sensor->l0x, VL53L0X_MODE_CONTINUOUS), TAG, "set continuous mode failed");
+    ESP_RETURN_ON_ERROR(vl53l0x_set_gpio_config(sensor->l0x, VL53L0X_GPIO_FUNCTION_NEW_MEASURE_READY,
+                                             VL53L0X_INTERRUPT_POLARITY_LOW), TAG, "set data-ready interrupt failed");
+    ESP_RETURN_ON_ERROR(vl53l0x_start_measurement(sensor->l0x), TAG, "start continuous ranging failed");
+    sensor->ranging = true;
+    return ESP_OK;
+}
+
+esp_err_t mosaico_tof_read_ready(mosaico_tof_handle_t sensor, mosaico_tof_data_t *data, bool *ready)
+{
+    if (data) memset(data, 0, sizeof(*data));
+    if (ready) *ready = false;
+    ESP_RETURN_ON_FALSE(sensor && data && ready, ESP_ERR_INVALID_ARG, TAG, "invalid poll arguments");
+    ESP_RETURN_ON_FALSE(sensor->ranging, ESP_ERR_INVALID_STATE, TAG, "continuous ranging not started");
+    bool available = false;
     if (sensor->model == SENSOR_VL53L0X) {
-        return vl53l0x_single_measure(sensor->l0x, data);
-    }
-    ESP_RETURN_ON_FALSE(sensor->model == SENSOR_VL53L4CD && sensor->ranging,
-                        ESP_ERR_INVALID_STATE, TAG, "sensor is not ranging");
-    uint8_t ready = 0;
-    const int64_t deadline = esp_timer_get_time() + 500000;
-    while (!ready) {
-        ESP_RETURN_ON_ERROR(l4cd_status(sensor, "data ready", VL53L4CD_CheckForDataReady(&sensor->l4cd, &ready)), TAG, "read ready flag failed");
-        if (ready) {
-            break;
+        ESP_RETURN_ON_ERROR(vl53l0x_get_ready(sensor->l0x, &available), TAG, "read ready flag failed");
+        if (!available) return ESP_OK;
+        uint32_t observed_ms = (uint32_t)(esp_timer_get_time() / 1000);
+        esp_err_t ret = vl53l0x_get_data(sensor->l0x, data);
+        if (ret == ESP_OK) ret = vl53l0x_clear_interrupt_mask(sensor->l0x);
+        if (ret != ESP_OK) {
+            memset(data, 0, sizeof(*data));
+            return ret;
         }
-        ESP_RETURN_ON_FALSE(esp_timer_get_time() < deadline, ESP_ERR_TIMEOUT, TAG, "VL53L4CD data-ready timeout");
-        vTaskDelay(pdMS_TO_TICKS(2) + 1);
+        data->timestamp_ms = observed_ms;
+        *ready = true;
+        return ESP_OK;
     }
+    ESP_RETURN_ON_FALSE(sensor->model == SENSOR_VL53L4CD, ESP_ERR_INVALID_STATE, TAG, "unknown sensor model");
+    uint8_t l4_ready = 0;
+    ESP_RETURN_ON_ERROR(l4cd_status(sensor, "data ready", VL53L4CD_CheckForDataReady(&sensor->l4cd, &l4_ready)), TAG, "read ready flag failed");
+    if (!l4_ready) return ESP_OK;
+    uint32_t observed_ms = (uint32_t)(esp_timer_get_time() / 1000);
     VL53L4CD_ResultsData_t result = {0};
     ESP_RETURN_ON_ERROR(l4cd_status(sensor, "read result", VL53L4CD_GetResult(&sensor->l4cd, &result)), TAG, "read result failed");
     ESP_RETURN_ON_ERROR(l4cd_status(sensor, "clear interrupt", VL53L4CD_ClearInterrupt(&sensor->l4cd)), TAG, "clear interrupt failed");
@@ -269,8 +292,24 @@ esp_err_t mosaico_tof_read(mosaico_tof_handle_t sensor, mosaico_tof_data_t *data
     data->effective_spad_count = result.number_of_spad;
     data->range_status = result.range_status;
     data->valid = result.range_status == 0 && result.number_of_spad != 0;
-    data->timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    data->timestamp_ms = observed_ms;
+    *ready = true;
     return ESP_OK;
+}
+
+esp_err_t mosaico_tof_read(mosaico_tof_handle_t sensor, mosaico_tof_data_t *data)
+{
+    if (data) memset(data, 0, sizeof(*data));
+    ESP_RETURN_ON_FALSE(sensor && data, ESP_ERR_INVALID_ARG, TAG, "invalid read arguments");
+    if (sensor->model == SENSOR_VL53L0X && !sensor->ranging) return vl53l0x_single_measure(sensor->l0x, data);
+    const int64_t deadline = esp_timer_get_time() + 500000;
+    while (true) {
+        bool ready = false;
+        ESP_RETURN_ON_ERROR(mosaico_tof_read_ready(sensor, data, &ready), TAG, "read continuous sample failed");
+        if (ready) return ESP_OK;
+        ESP_RETURN_ON_FALSE(esp_timer_get_time() < deadline, ESP_ERR_TIMEOUT, TAG, "data-ready timeout");
+        vTaskDelay(pdMS_TO_TICKS(2) + 1);
+    }
 }
 
 esp_err_t mosaico_tof_close(mosaico_tof_handle_t sensor)
@@ -285,14 +324,20 @@ esp_err_t mosaico_tof_close(mosaico_tof_handle_t sensor)
         }
         sensor->ranging = false;
     }
+    /* The legacy driver stops continuous ranging while the sensor is still awake.
+     * Its best-effort destroy also frees host handles after physical removal. */
+    if (sensor->l0x) {
+        esp_err_t ret = vl53l0x_destroy(sensor->l0x);
+        if (ret != ESP_OK) {
+            gpio_set_level(sensor->xshut, 0);
+            return ret;
+        }
+        sensor->l0x = NULL;
+    }
     ESP_RETURN_ON_ERROR(gpio_set_level(sensor->xshut, 0), TAG, "assert XSHUT during cleanup failed");
     if (sensor->l4cd.i2c) {
         ESP_RETURN_ON_ERROR(i2c_master_bus_rm_device(sensor->l4cd.i2c), TAG, "remove sensor I2C handle failed");
         sensor->l4cd.i2c = NULL;
-    }
-    if (sensor->l0x) {
-        ESP_RETURN_ON_ERROR(vl53l0x_destroy(sensor->l0x), TAG, "destroy VL53L0X failed");
-        sensor->l0x = NULL;
     }
     free(sensor);
     return ESP_OK;

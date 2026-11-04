@@ -28,11 +28,24 @@ typedef vl53l0x_data_t mosaico_tof_data_t;
  */
 esp_err_t mosaico_tof_open(bsp_subboard_slot_t slot, mosaico_tof_handle_t *out_sensor);
 
-/** Read a sample, waiting at most 500 ms for VL53L4CD data-ready.
+/** Read a sample, waiting at most 500 ms for continuous data-ready.
  * ESP_OK reports communication success; use the distance only when data.valid.
- * VL53L0X uses single-shot ranging; VL53L4CD uses continuous 33 ms ranging.
+ * VL53L0X opens in single-shot mode; VL53L4CD opens in continuous mode.
  */
 esp_err_t mosaico_tof_read(mosaico_tof_handle_t sensor, mosaico_tof_data_t *data);
+
+/** Start back-to-back ranging on VL53L0X; VL53L4CD is already continuous.
+ * Configure address, timing budget and offset before starting VL53L0X.
+ * Both sensors can then acquire concurrently on the shared bus. Idempotent.
+ */
+esp_err_t mosaico_tof_start_continuous(mosaico_tof_handle_t sensor);
+
+/** Poll one new continuous sample without waiting for measurement completion.
+ * ESP_OK with ready=false means no new result; ready=true includes invalid
+ * ranges, so also check data.valid. Errors invalidate data and leave ready=false.
+ * timestamp_ms records the host's data-ready observation, not optical sync time.
+ */
+esp_err_t mosaico_tof_read_ready(mosaico_tof_handle_t sensor, mosaico_tof_data_t *data, bool *ready);
 
 /** Stop ranging and free resources. A failed removal of host resources retains
  * the handle for retry. Shared power and the I2C bus remain available.
@@ -44,6 +57,7 @@ const char *mosaico_tof_model_name(mosaico_tof_handle_t sensor);
 
 /** Set a unique 7-bit address (0x08..0x77, excluding default 0x29).
  * Call after opening and before releasing the next sensor from XSHUT.
+ * Configure VL53L0X before starting continuous mode.
  * On failure, close the handle and reset/reopen it before further use.
  */
 esp_err_t mosaico_tof_set_address(mosaico_tof_handle_t sensor, uint8_t address);
@@ -51,6 +65,7 @@ esp_err_t mosaico_tof_set_address(mosaico_tof_handle_t sensor, uint8_t address);
 /** Change timing budget, retaining validity checks. Units: microseconds.
  * VL53L4CD accepts whole milliseconds in 10000..200000 us; VL53L0X uses
  * the PAL's supported timing range. VL53L4CD ranging restarts after updating.
+ * Configure VL53L0X before starting continuous mode.
  */
 esp_err_t mosaico_tof_set_timing_budget(mosaico_tof_handle_t sensor, uint32_t budget_us);
 
@@ -59,6 +74,7 @@ esp_err_t mosaico_tof_get_offset_calibration(mosaico_tof_handle_t sensor, int32_
 
 /** Set a distance offset in micrometers (-512000..511000, steps of 250).
  * An application can add per-board compensation to the initial offset.
+ * Configure VL53L0X before starting continuous mode.
  */
 esp_err_t mosaico_tof_set_offset_calibration(mosaico_tof_handle_t sensor, int32_t offset_um);
 

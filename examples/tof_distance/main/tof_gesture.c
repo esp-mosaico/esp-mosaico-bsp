@@ -157,6 +157,19 @@ tof_gesture_event_t tof_gesture_update_timed(tof_gesture_t *s, uint32_t now,
     return event;
 }
 
+bool tof_hand_no_target(bool is_l0x, bool valid, unsigned distance_mm, unsigned range_status)
+{
+    return !valid && (range_status == 2 ||
+        (is_l0x && range_status == 4 && (distance_mm == 8190 || distance_mm == 8191)));
+}
+
+tof_hand_input_t tof_hand_classify_model(bool is_l0x, bool valid, unsigned distance_mm,
+                                       unsigned range_status, unsigned near_mm)
+{
+    if (tof_hand_no_target(is_l0x, valid, distance_mm, range_status)) return TOF_HAND_CLEAR;
+    return tof_hand_classify(valid, distance_mm, range_status, near_mm);
+}
+
 tof_hand_input_t tof_hand_classify(bool valid, unsigned distance_mm,
                                  unsigned range_status, unsigned near_mm)
 {
@@ -186,9 +199,14 @@ tof_gesture_event_t tof_hand_gesture_update(tof_hand_gesture_t *s, uint32_t now,
     }
     if (left == TOF_HAND_UNKNOWN || right == TOF_HAND_UNKNOWN) {
         if (!s->have_good || now - s->last_good_ms > MAX_INVALID_GAP_MS) reset_hand(s);
+        else s->missing_samples = true;
         return TOF_GESTURE_NONE;
     }
-    if (s->have_good && now - s->last_good_ms > MAX_INVALID_GAP_MS) reset_hand(s);
+    /* Slow but usable frames are not missing data. Only an observed unknown
+     * interval uses the 80 ms grace; a true acquisition stall uses 500 ms. */
+    if (s->have_good && (now - s->last_good_ms > MAX_FRAME_GAP_MS ||
+        (s->missing_samples && now - s->last_good_ms > MAX_INVALID_GAP_MS))) reset_hand(s);
+    s->missing_samples = false;
     s->last_good_ms = now;
     s->have_good = true;
     if (!s->ready) {

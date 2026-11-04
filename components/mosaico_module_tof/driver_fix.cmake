@@ -28,6 +28,19 @@ tof_replace("ESP_RETURN_ON_ERROR(vl53l0x_check_status(\n        \"VL53L0X_Perfor
 tof_replace("    dev_handle = NULL;\n\n    const i2c_device_config_t i2c_dev_cfg = {"
             "    dev_handle = NULL;\n    sensor->dev.i2c_dev_handle = NULL;\n\n    const i2c_device_config_t i2c_dev_cfg = {")
 
+# The one-shot PAL call already returns/decodes its result. Avoid a second read.
+tof_replace("    return vl53l0x_get_data(sensor, data);"
+            "    return ESP_OK;")
+# Acknowledging a continuous result must not lose the driver's running state.
+tof_replace("TAG, \"VL53L0X_ClearInterruptMask failed\");\n    sensor->measuring = false;"
+            "TAG, \"VL53L0X_ClearInterruptMask failed\");\n    if (sensor->mode == VL53L0X_MODE_SINGLE) sensor->measuring = false;")
+# ST's stop-status register is zero when the stop sequence is complete.
+tof_replace("        if (stop_status != 0U) {"
+            "        if (stop_status == 0U) {")
+# A removed sensor cannot acknowledge stop; still release its host resources.
+tof_replace("        ESP_RETURN_ON_ERROR(vl53l0x_stop_measurement(sensor, VL53L0X_DEFAULT_STOP_TIMEOUT_MS), TAG, \"Failed to stop measurement before destroying sensor\");"
+            "        esp_err_t stop_ret = vl53l0x_stop_measurement(sensor, VL53L0X_DEFAULT_STOP_TIMEOUT_MS);\n        if (stop_ret != ESP_OK) ESP_LOGW(TAG, \"Stop failed during destroy: %s\", esp_err_to_name(stop_ret));")
+
 set(tof_fixed_source "${CMAKE_CURRENT_BINARY_DIR}/vl53l0x_fixed.c")
 file(WRITE "${tof_fixed_source}" "${tof_driver_code}")
 get_target_property(tof_driver_sources ${tof_driver_lib} SOURCES)
