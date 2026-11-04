@@ -1,5 +1,5 @@
 version: "0.1.0"
-description: ESP-Mosaico VL53L0X ToF module
+description: ESP-Mosaico ToF module for default VL53L4CDV0DH/1 and compatible VL53L0CXV0DH/1
 license: Apache-2.0
 targets:
   - esp32s31
