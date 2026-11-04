@@ -34,6 +34,22 @@ menu "ESP-Mosaico BSP"
             coexistence). 0 = weakest (GPIO_DRIVE_CAP_0), 3 = strongest.
             Default is 2 (GPIO_DRIVE_CAP_DEFAULT).
 
+    choice BSP_NAND_FLASH_CLOCK
+        prompt "Default SPI NAND clock frequency"
+        default BSP_NAND_FLASH_CLOCK_80M
+        help
+            Default working clock: 80 MHz. Select 40 MHz if needed.
+            Used when bsp_nand_flash_init() has no clock specified;
+            an explicit clock_speed_hz takes precedence.
+            QIO/QOUT bootstrap remains capped at 20 MHz.
+
+        config BSP_NAND_FLASH_CLOCK_40M
+            bool "40 MHz"
+
+        config BSP_NAND_FLASH_CLOCK_80M
+            bool "80 MHz"
+    endchoice
+
     config BSP_MOTOR_ENABLE_PWM
         bool "Enable LEDC PWM motor control"
         default y

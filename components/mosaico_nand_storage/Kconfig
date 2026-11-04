@@ -1,0 +1,41 @@
+menu "Mosaico NAND storage"
+    config MOSAICO_NAND_STORAGE_ENABLE
+        bool "Enable NAND LittleFS storage"
+        default n
+        select NAND_FLASH_ENABLE_BDL
+        help
+            Optional filesystem path. The legacy BSP page API remains available
+            when the NAND block-device layer is disabled.
+
+    if MOSAICO_NAND_STORAGE_ENABLE
+        config MOSAICO_NAND_STORAGE_CLOCK_MHZ
+            int "SPI clock override in MHz (0 follows BSP)"
+            range 0 80
+            default 0
+
+        config MOSAICO_NAND_STORAGE_QIO
+            bool "Use four NAND data pins"
+            default y
+
+        config MOSAICO_NAND_STORAGE_READ_CACHE_KIB
+            int "Logical read cache in PSRAM (KiB, 0 disables)"
+            range 0 128
+            default 128
+            help
+                Write-through cache. Writes/erase invalidate affected pages;
+                sync, ioctl and errors invalidate all cached pages.
+                Allocation failure falls back to uncached reads.
+
+        config MOSAICO_NAND_STORAGE_POLL_SHORT
+            bool "Poll short page-load and READY commands"
+            default y
+
+        config MOSAICO_NAND_STORAGE_RECLAIM
+            bool "Enable explicit post-commit reclamation"
+            default y
+            help
+                Call maintenance after committed changes with all files and
+                directories closed. Traversal and TRIM hold the VFS lock;
+                a cold sweep can take seconds. Geometry and ECC are unchanged.
+    endif
+endmenu

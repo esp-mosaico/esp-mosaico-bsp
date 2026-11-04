@@ -22,6 +22,7 @@ set(BSP_REQUIRES
     esp_lcd
     esp_system
     esp_timer
+    esp_blockdev
     soc
 )
 
