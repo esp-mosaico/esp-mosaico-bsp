@@ -1,0 +1,15 @@
+version: "0.1.0"
+description: Optional NAND LittleFS storage for ESP-Mosaico
+license: Apache-2.0
+targets:
+  - esp32s31
+dependencies:
+  idf: ">=6.2"
+  esp-mosaico-bsp:
+    path: ../esp-mosaico-bsp
+    public: true
+  joltwallet/littlefs:
+    version: "==1.23.0"
+    override_path: ../joltwallet__littlefs
+    rules:
+      - if: $CONFIG{MOSAICO_NAND_STORAGE_ENABLE} == True

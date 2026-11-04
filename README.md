@@ -81,6 +81,10 @@ Run `idf.py menuconfig` and open `ESP-Mosaico BSP` to configure the board-specif
 - Motor PWM control
 - VCC 3.3 V soft-start time
 
+For optional NAND file storage, use [mosaico_nand_storage](components/mosaico_nand_storage).
+It provides retained LittleFS mounting, a configurable read cache and explicit
+post-commit reclamation. Existing page-API applications keep BDL disabled.
+
 ## Repository Structure
 
 ```text

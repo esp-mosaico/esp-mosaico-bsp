@@ -6,10 +6,12 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "sdkconfig.h"
 #include "driver/spi_master.h"
 #include "esp_err.h"
 #include "spi_nand_flash.h"
+#include "esp_blockdev.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,6 +33,7 @@ typedef struct {
     uint8_t gc_factor;
     spi_nand_flash_io_mode_t io_mode;
     uint8_t flags;
+    bool poll_short_commands; /**< Poll page-load/READY commands on this device. */
 } bsp_nand_flash_config_t;
 
 #define BSP_NAND_FLASH_DEFAULT_CONFIG() {                     \
@@ -40,10 +43,19 @@ typedef struct {
     .gc_factor = 0,                                           \
     .io_mode = SPI_NAND_IO_MODE_QIO,                \
     .flags = SPI_DEVICE_HALFDUPLEX,                           \
+    .poll_short_commands = false,                            \
 }
 
 esp_err_t bsp_nand_flash_init(const bsp_nand_flash_config_t *config,
                               spi_nand_flash_device_t **out_handle);
+/** Initialize the exclusive block-device path (requires NAND_FLASH_ENABLE_BDL).
+ * On success the caller owns the returned device. Its release operation frees
+ * the NAND, SPI device and bus, including when a filesystem mount fails.
+ * The legacy page path and block-device path cannot coexist on this chip.
+ * Stop all IO before release; deinit rejects a live block-device owner. */
+esp_err_t bsp_nand_flash_init_blockdev(const bsp_nand_flash_config_t *config,
+                                    esp_blockdev_handle_t *out_handle);
+/** Release legacy resources; release an owned block device through its ops. */
 esp_err_t bsp_nand_flash_deinit(void);
 spi_nand_flash_device_t *bsp_nand_flash_get_handle(void);
 
