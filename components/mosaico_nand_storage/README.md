@@ -16,9 +16,11 @@ esp_err_t maintenance = mosaico_nand_storage_reclaim();
 - Clock defaults to the BSP selection (80 MHz, with 40 MHz available). A nonzero
   storage clock override or explicit config takes priority. QIO bootstrap uses
   single IO at up to 20 MHz and the driver's detected-chip QE policy.
-- Default read cache: 64 KiB PSRAM; allocation failure uses uncached IO.
+- Default read cache: 128 KiB PSRAM; allocation failure uses uncached IO.
   Lookahead: 8 KiB using LittleFS's allocation policy. Reclamation uses two
   bitmaps of about 8 KiB PSRAM each for a 1 Gbit device, plus cache metadata.
+- QIO, short-command polling, Dhara path caching and explicit post-commit
+  reclamation are enabled by default. Existing explicit settings remain valid.
 - Data writes remain synchronous. Geometry, ECC, bad-block handling and existing
   filesystems are retained. Mount failure never formats or grows a volume.
 - Call `reclaim()` after committed changes. It synchronizes the root and trims

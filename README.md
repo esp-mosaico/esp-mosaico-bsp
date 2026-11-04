@@ -84,6 +84,8 @@ Run `idf.py menuconfig` and open `ESP-Mosaico BSP` to configure the board-specif
 For optional NAND file storage, use [mosaico_nand_storage](components/mosaico_nand_storage).
 It provides retained LittleFS mounting, a configurable read cache and explicit
 post-commit reclamation. Existing page-API applications keep BDL disabled.
+NAND defaults to QIO 80 MHz with short-command polling; file storage adds a
+128 KiB PSRAM read cache. Explicit clock/configuration overrides take priority.
 
 ## Repository Structure
 

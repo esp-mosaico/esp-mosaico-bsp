@@ -43,7 +43,7 @@ typedef struct {
     .gc_factor = 0,                                           \
     .io_mode = SPI_NAND_IO_MODE_QIO,                \
     .flags = SPI_DEVICE_HALFDUPLEX,                           \
-    .poll_short_commands = false,                            \
+    .poll_short_commands = true,                             \
 }
 
 esp_err_t bsp_nand_flash_init(const bsp_nand_flash_config_t *config,

@@ -20,7 +20,7 @@ menu "Mosaico NAND storage"
         config MOSAICO_NAND_STORAGE_READ_CACHE_KIB
             int "Logical read cache in PSRAM (KiB, 0 disables)"
             range 0 128
-            default 64
+            default 128
             help
                 Write-through cache. Writes/erase invalidate affected pages;
                 sync, ioctl and errors invalidate all cached pages.
