@@ -18,9 +18,8 @@ static const char *TAG = "nand_winbond";
 
 esp_err_t spi_nand_winbond_init(spi_nand_flash_device_t *dev)
 {
-    esp_err_t ret = ESP_OK;
     uint16_t device_id;
-    ESP_RETURN_ON_ERROR(spi_nand_read_device_id(dev, (uint8_t *)&device_id, sizeof(device_id)), TAG, "%s, Failed to get the device ID %d", __func__, ret);
+    ESP_RETURN_ON_ERROR(spi_nand_read_device_id(dev, (uint8_t *)&device_id, sizeof(device_id)), TAG, "%s, Failed to get the device ID", __func__);
     device_id = SWAP_BYTES(device_id);
     dev->device_info.device_id = device_id;
     snprintf(dev->device_info.chip_name, sizeof(dev->device_info.chip_name),
