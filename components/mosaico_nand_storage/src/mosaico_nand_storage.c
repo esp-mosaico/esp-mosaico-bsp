@@ -1,4 +1,7 @@
-// SPDX-License-Identifier: Apache-2.0
+/*
+ * SPDX-FileCopyrightText: 2026 Espressif Systems (Shanghai) CO LTD
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include "mosaico_nand_storage.h"
 #include "storage_blockdev.h"
 #include "storage_volume.h"
@@ -193,6 +196,11 @@ esp_err_t mosaico_nand_storage_error(void)
     esp_err_t status = atomic_load(&s_nand_status);
     if (status != ESP_OK && status != ESP_ERR_INVALID_STATE) return status;
     return storage_blockdev_read_error();
+}
+
+void mosaico_nand_storage_clear_error(void)
+{
+    if (atomic_load(&s_nand_status) == ESP_OK) storage_blockdev_clear_error();
 }
 
 mosaico_nand_storage_recoverability_t mosaico_nand_storage_recoverability(void)

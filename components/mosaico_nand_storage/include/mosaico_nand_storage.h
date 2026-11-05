@@ -1,4 +1,7 @@
-// SPDX-License-Identifier: Apache-2.0
+/*
+ * SPDX-FileCopyrightText: 2026 Espressif Systems (Shanghai) CO LTD
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -60,6 +63,9 @@ esp_err_t mosaico_nand_storage_unmount(void);
  * The application must obtain user confirmation and quiesce its users first. */
 esp_err_t mosaico_nand_storage_format(const mosaico_nand_storage_config_t *config);
 esp_err_t mosaico_nand_storage_error(void);
+/* Forget a latched read error of the mounted volume before a new job; a
+ * persistent fault latches again on its next failing read. */
+void mosaico_nand_storage_clear_error(void);
 mosaico_nand_storage_recoverability_t mosaico_nand_storage_recoverability(void);
 /* Read committed usage; cancellation preserves outputs. The callback must not
  * perform IO or call storage APIs. Mutations invalidate the usage cache. */
