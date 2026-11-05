@@ -195,7 +195,8 @@ esp_err_t mosaico_nand_storage_error(void)
 {
     esp_err_t status = atomic_load(&s_nand_status);
     if (status != ESP_OK && status != ESP_ERR_INVALID_STATE) return status;
-    return storage_blockdev_read_error();
+    esp_err_t media = storage_blockdev_media_error();
+    return media != ESP_OK ? media : storage_blockdev_read_error();
 }
 
 void mosaico_nand_storage_clear_error(void)
@@ -205,6 +206,8 @@ void mosaico_nand_storage_clear_error(void)
 
 mosaico_nand_storage_recoverability_t mosaico_nand_storage_recoverability(void)
 {
+    /* Retrying cannot pass a page that stalls Dhara GC; formatting drops its mapping. */
+    if (storage_blockdev_media_error() != ESP_OK) return MOSAICO_NAND_STORAGE_RECOVERABLE_FORMAT;
     if (storage_blockdev_read_error() != ESP_OK) return MOSAICO_NAND_STORAGE_RETRYABLE_IO;
     return (mosaico_nand_storage_recoverability_t)atomic_load(&s_recoverability);
 }

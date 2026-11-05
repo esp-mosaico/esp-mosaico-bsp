@@ -23,6 +23,9 @@ esp_err_t maintenance = mosaico_nand_storage_reclaim();
   reclamation are enabled by default. Existing explicit settings remain valid.
 - Data writes remain synchronous. Geometry, ECC, bad-block handling and existing
   filesystems are retained. Mount failure never formats or grows a volume.
+- An uncorrectable page met by write/trim garbage collection fails every later
+  mutation, so it reports `RECOVERABLE_FORMAT` until format or remount. Read
+  errors stay `RETRYABLE_IO`.
 - Call `reclaim()` after committed changes. It synchronizes the root and trims
   only unreachable pages under the VFS lock, rejecting any open file/directory.
   A cold sweep can take seconds; yielding CPU does not release the VFS lock.
