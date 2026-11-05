@@ -64,13 +64,18 @@ typedef struct {
 typedef struct {
     tof_hand_channel_t channel[2];
     uint32_t window_ms, clear_since_ms, last_good_ms;
-    bool learning_clear, have_good, ready;
+    bool learning_clear, have_good, missing_samples, ready;
 } tof_hand_gesture_t;
 
 /* Common range status 2 is signal fail on both supported sensors. Its distance
  * is ignored: it only denotes no confident target for near-field detection. */
 tof_hand_input_t tof_hand_classify(bool valid, unsigned distance_mm,
                                  unsigned range_status, unsigned near_mm);
+/* Only L0 phase-fail results with the observed 8190/8191 invalid-range codes
+ * join signal-fail as no target. Preserve raw status/validity in the driver. */
+bool tof_hand_no_target(bool is_l0x, bool valid, unsigned distance_mm, unsigned range_status);
+tof_hand_input_t tof_hand_classify_model(bool is_l0x, bool valid, unsigned distance_mm,
+                                       unsigned range_status, unsigned near_mm);
 void tof_hand_gesture_init(tof_hand_gesture_t *state, uint32_t window_ms);
 /* A clear field arms after 80 ms, including when no valid background exists.
  * Each hand pulse needs two near samples and 25 ms duration. The caller applies

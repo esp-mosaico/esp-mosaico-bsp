@@ -2,7 +2,7 @@
 
 `mosaico_module_thermal` is an ESP-IDF driver component for the Mosaico MLX90640 thermal imaging module. It provides contactless temperature acquisition at a resolution of 32 × 24 pixels. Applications can read a complete temperature matrix in degrees Celsius, the sensor ambient temperature, and the sensor supply voltage for thermal image display, temperature distribution monitoring, and hotspot detection.
 
-The component handles sensor initialization, calibration parameter loading, temperature calculation, and bad pixel correction. Applications handle color palettes, image scaling, display rotation, and user interaction. See the [thermal_camera example](../../examples/thermal_camera) for a complete application.
+The component handles sensor initialization, calibration parameter loading, temperature calculation, and bad pixel correction. Applications handle color palettes, image scaling, display rotation, and user interaction.
 
 ## Module Specifications
 
@@ -27,7 +27,7 @@ The module can be connected to either the left or right Mosaico subboard slot. B
 
 ## Project Integration
 
-Add `mosaico_module_thermal` and `mosaico_module_mgr` as application dependencies. For projects using this repository layout, refer to the example's [`main/idf_component.yml`](../../examples/thermal_camera/main/idf_component.yml):
+Declare the local dependencies in the application's `idf_component.yml`, adjusting paths to match the project layout:
 
 ```yaml
 dependencies:
@@ -53,8 +53,6 @@ The public API is declared in [`mosaico_module_thermal.h`](include/mosaico_modul
 5. When finished, call `mosaico_thermal_del()`. After successful deletion, set the handle to `NULL`, then call `mosaico_module_mgr_release(&lease)` to release the slot.
 
 All component calls are synchronous; the component does not create an acquisition task. Schedule acquisition in an application task and serialize all operations on the same handle, including deletion. The component does not claim slots or delete the shared BSP bus.
-
-See [`thermal_camera/main/main.c`](../../examples/thermal_camera/main/main.c) for initialization, continuous acquisition, error handling, and resource cleanup.
 
 ## Configuration
 

@@ -6,6 +6,7 @@
 #include "bsp/display.h"
 #include "esp_check.h"
 #include <stdio.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 
 #define ACCENT 0x63E6CB
@@ -15,6 +16,7 @@
 
 static const char *TAG = "tof_ui";
 typedef struct {
+    bool is_l0x;
     lv_obj_t *identity;
     lv_obj_t *distance;
     lv_obj_t *status;
@@ -185,6 +187,7 @@ static void render_status(mosaico_module_mgr_slot_t slot, const char *message)
 {
     slot_ui_t *ui = slot_ui(slot);
     if (!ui) return;
+    ui->is_l0x = false;
     lv_label_set_text_fmt(ui->identity, "I2C 0x%02X", slot == MOSAICO_MODULE_MGR_SLOT_LEFT ? 0x30 : 0x31);
     lv_label_set_text(ui->distance, "--");
     lv_label_set_text(ui->status, message);
@@ -199,8 +202,9 @@ static void render_update(mosaico_module_mgr_slot_t slot, const mosaico_tof_data
     if (!ui) return;
     lv_label_set_text_fmt(ui->detail, "SIGNAL %.2f MCPS\nAMBIENT %.2f MCPS",
                           data->signal_rate_mcps, data->ambient_rate_mcps);
+    bool no_target = tof_hand_no_target(ui->is_l0x, data->valid, data->distance_mm, data->range_status);
     lv_obj_set_style_text_color(ui->status,
-                               lv_color_hex(data->valid ? ACCENT : data->range_status == 2 ? MUTED : AMBER), 0);
+                               lv_color_hex(data->valid ? ACCENT : no_target ? MUTED : AMBER), 0);
     if (data->valid) {
         /* Keep unusually large five-digit readings inside the half-screen card. */
         int scale = data->distance_mm >= 10000 ? 256 : 384;
@@ -213,7 +217,7 @@ static void render_update(mosaico_module_mgr_slot_t slot, const mosaico_tof_data
                          LV_ANIM_OFF);
     } else {
         lv_label_set_text(ui->distance, "--");
-        if (data->range_status == 2) {
+        if (no_target) {
             lv_label_set_text(ui->status, "NO TARGET");
         } else {
             lv_label_set_text_fmt(ui->status, "INVALID TARGET  /  STATUS %u", (unsigned)data->range_status);
@@ -226,6 +230,7 @@ static void render_set_sensor(mosaico_module_mgr_slot_t slot, const char *model)
 {
     slot_ui_t *ui = slot_ui(slot);
     if (!ui) return;
+    ui->is_l0x = strcmp(model, "VL53L0X") == 0;
     lv_label_set_text_fmt(ui->identity, "%s / 0x%02X", model,
                           slot == MOSAICO_MODULE_MGR_SLOT_LEFT ? 0x30 : 0x31);
 }

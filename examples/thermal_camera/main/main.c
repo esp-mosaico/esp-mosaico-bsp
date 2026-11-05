@@ -112,7 +112,7 @@ void app_main(void)
     bsp_display_config_t display = BSP_DISPLAY_DEFAULT_CONFIG();
     display.buffer_height = 120;
     display.task_stack_size = 16 * 1024;
-    display.enable_touch = false;
+    display.enable_touch = true;
     if (!bsp_display_start_with_config(&display)) {
         ESP_LOGE(TAG, "Display start failed");
         return;

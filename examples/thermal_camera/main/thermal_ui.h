@@ -10,7 +10,9 @@
 extern "C" {
 #endif
 
-/** Create LVGL thermal viewer on the already-started Mosaico display. */
+/** Create the viewer with touch point thermometry under the LVGL display lock.
+ * Start the BSP display with touch enabled before calling.
+ */
 esp_err_t thermal_ui_start(void);
 
 #ifdef __cplusplus

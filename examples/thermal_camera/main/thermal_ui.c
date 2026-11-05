@@ -19,8 +19,12 @@
 #define VIEW_W              (THERMAL_W * VIEW_SCALE)   /* 480 */
 #define VIEW_H              (THERMAL_H * VIEW_SCALE)   /* 360 */
 #define VIEW_BYTES          (VIEW_W * VIEW_H * sizeof(uint16_t))
-#define TITLE_H             56
-#define STATS_BAR_H         64
+#define VIEW_TOP            ((BSP_LCD_V_RES - VIEW_H) / 2)
+#define STATS_BAR_H         VIEW_TOP
+#define PROBE_SIZE          22
+#define PROBE_LABEL_W       96
+#define PROBE_LABEL_H       24
+#define TITLE_Y             ((VIEW_TOP - lv_font_montserrat_20.line_height) / 2)
 #define SAFE_MARGIN         28   /* keep clear of round-corner bezel */
 #define MIN_TEMP_SPAN_C     3.0f
 #define RANGE_EMA           0.25f
@@ -37,6 +41,29 @@ static uint32_t s_last_frame_id;
 static float s_lo = 20.0f;
 static float s_hi = 35.0f;
 static bool s_range_ready;
+static float s_filtered[THERMAL_N];
+static bool s_have_frame;
+static bool s_rotate_180;
+static bool s_selected;
+static int s_probe_x, s_probe_y;
+static lv_obj_t *s_probe_box;
+static lv_obj_t *s_probe_label;
+
+static int clamp_int(int value, int minimum, int maximum)
+{
+    return value < minimum ? minimum : value > maximum ? maximum : value;
+}
+
+/* Identical mapping for the color renderer and the point thermometer. */
+static float sensor_x(int x, bool rotate_180)
+{
+    return (float)(rotate_180 ? VIEW_W - 1 - x : x) * (THERMAL_W - 1) / (VIEW_W - 1);
+}
+
+static float sensor_y(int y, bool rotate_180)
+{
+    return (float)(rotate_180 ? VIEW_H - 1 - y : y) * (THERMAL_H - 1) / (VIEW_H - 1);
+}
 
 static void build_lut(void)
 {
@@ -145,6 +172,63 @@ static float sample_bilinear(const float *img, float x, float y)
     return v0 + (v1 - v0) * fy;
 }
 
+static void clear_probe(void)
+{
+    s_selected = false;
+    lv_obj_add_flag(s_probe_box, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_probe_label, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void update_probe(void)
+{
+    if (!s_selected || !s_have_frame) return;
+    float temperature = sample_bilinear(s_filtered, sensor_x(s_probe_x, s_rotate_180),
+                                       sensor_y(s_probe_y, s_rotate_180));
+    int box_x = clamp_int(s_probe_x - PROBE_SIZE / 2, 0, VIEW_W - PROBE_SIZE);
+    int box_y = clamp_int(s_probe_y - PROBE_SIZE / 2, 0, VIEW_H - PROBE_SIZE);
+    lv_obj_set_pos(s_probe_box, box_x, box_y);
+    lv_label_set_text_fmt(s_probe_label, "%.1f " "\xC2\xB0" "C", temperature);
+    /* Top-edge probes use a compact badge beneath the centered heading. */
+    lv_area_t image_area;
+    lv_obj_get_coords(s_img, &image_area);
+    int label_x = clamp_int(image_area.x1 + s_probe_x - PROBE_LABEL_W / 2,
+                            SAFE_MARGIN, BSP_LCD_H_RES - SAFE_MARGIN - PROBE_LABEL_W);
+    int label_y = image_area.y1 + box_y - PROBE_LABEL_H - 4;
+    bool compact = label_y < TITLE_Y + lv_font_montserrat_20.line_height;
+    int label_height = compact ? 18 : PROBE_LABEL_H;
+    lv_obj_set_style_text_font(s_probe_label, compact ? &lv_font_montserrat_14 : &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_ver(s_probe_label, compact ? 1 : 2, 0);
+    lv_obj_set_height(s_probe_label, label_height);
+    lv_obj_set_pos(s_probe_label, label_x, image_area.y1 + box_y - label_height - (compact ? 1 : 4));
+    lv_obj_remove_flag(s_probe_box, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_probe_label, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void select_point(int x, int y)
+{
+    if (!s_have_frame || x < 0 || x >= VIEW_W || y < 0 || y >= VIEW_H) return;
+    s_probe_x = x;
+    s_probe_y = y;
+    s_selected = true;
+    update_probe();
+}
+
+static void image_touch(lv_event_t *event)
+{
+    lv_event_code_t code = lv_event_get_code(event);
+    if (code != LV_EVENT_PRESSED && code != LV_EVENT_PRESSING) return;
+    lv_indev_t *input = lv_event_get_indev(event);
+    if (!input || lv_indev_get_type(input) != LV_INDEV_TYPE_POINTER) return;
+    lv_point_t point;
+    lv_area_t area;
+    lv_indev_get_point(input, &point);
+    lv_obj_get_coords(s_img, &area);
+    select_point(point.x - area.x1, point.y - area.y1);
+    if (code == LV_EVENT_PRESSED && s_selected) {
+        ESP_LOGI(TAG, "Temperature probe: view=(%d,%d)", s_probe_x, s_probe_y);
+    }
+}
+
 static void update_range(const float *pixels)
 {
     float sorted[THERMAL_N];
@@ -174,21 +258,18 @@ static void update_range(const float *pixels)
 
 static void render_frame(const thermal_frame_t *frame)
 {
-    float filtered[THERMAL_N];
-    median3x3(frame->pixels, filtered);
-    update_range(filtered);
+    median3x3(frame->pixels, s_filtered);
+    update_range(s_filtered);
 
     const float inv = 255.0f / (s_hi - s_lo);
-    const float x_scale = (float)(THERMAL_W - 1) / (float)(VIEW_W - 1);
-    const float y_scale = (float)(THERMAL_H - 1) / (float)(VIEW_H - 1);
 
     for (int dy = 0; dy < VIEW_H; dy++) {
         /* Combine the sensor mounting rotation with the active slot orientation. */
-        const float sy = (float)(frame->rotate_180 ? VIEW_H - 1 - dy : dy) * y_scale;
+        const float sy = sensor_y(dy, frame->rotate_180);
         uint16_t *row = &s_rgb565[dy * VIEW_W];
         for (int dx = 0; dx < VIEW_W; dx++) {
-            const float sx = (float)(frame->rotate_180 ? VIEW_W - 1 - dx : dx) * x_scale;
-            const float t = sample_bilinear(filtered, sx, sy);
+            const float sx = sensor_x(dx, frame->rotate_180);
+            const float t = sample_bilinear(s_filtered, sx, sy);
             int idx = (int)((t - s_lo) * inv + 0.5f);
             if (idx < 0) {
                 idx = 0;
@@ -209,6 +290,8 @@ static void ui_timer_cb(lv_timer_t *timer)
         lv_obj_add_flag(s_img, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(s_lbl_stats, "Waiting for sensor...");
         lv_label_set_text(s_lbl_frame, "OFFLINE");
+        s_have_frame = false;
+        clear_probe();
         s_range_ready = false;
         return;
     }
@@ -217,12 +300,17 @@ static void ui_timer_cb(lv_timer_t *timer)
     }
     s_last_frame_id = frame.frame_id;
 
+    if (s_have_frame && s_rotate_180 != frame.rotate_180) clear_probe();
+
     lv_obj_remove_flag(s_img, LV_OBJ_FLAG_HIDDEN);
     render_frame(&frame);
+    s_rotate_180 = frame.rotate_180;
+    s_have_frame = true;
 
     lv_image_set_src(s_img, NULL);
     lv_image_set_src(s_img, &s_img_dsc);
     lv_obj_invalidate(s_img);
+    update_probe();
 
     char buf[96];
     snprintf(buf, sizeof(buf), "Ta %.1f  min %.1f  max %.1f  ctr %.1f C",
@@ -257,21 +345,49 @@ esp_err_t thermal_ui_start(void)
     s_img_dsc.data = (const uint8_t *)s_rgb565;
 
     lv_obj_t *screen = lv_screen_active();
-    lv_obj_set_style_bg_color(screen, lv_color_hex(0x071522), 0);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0x08131E), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
     lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *title = lv_label_create(screen);
-    lv_label_set_text(title, "THERMAL CAMERA");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
-    lv_obj_set_style_text_color(title, lv_color_hex(0x55C2FF), 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 14);
+    lv_label_set_recolor(title, true);
+    lv_label_set_text(title, "ESP-Mosaico  #314A5D |#  #63E6CB Module Thermal Camera#");
+    lv_obj_set_width(title, BSP_LCD_H_RES - 2 * SAFE_MARGIN);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(0xDCEAF3), 0);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, TITLE_Y);
 
     s_img = lv_image_create(screen);
     lv_image_set_src(s_img, &s_img_dsc);
     lv_obj_set_size(s_img, VIEW_W, VIEW_H);
-    lv_obj_align(s_img, LV_ALIGN_TOP_MID, 0, TITLE_H);
+    lv_obj_align(s_img, LV_ALIGN_TOP_MID, 0, VIEW_TOP);
     lv_obj_remove_flag(s_img, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_img, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_img, image_touch, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(s_img, image_touch, LV_EVENT_PRESSING, NULL);
+
+    s_probe_box = lv_obj_create(s_img);
+    lv_obj_remove_style_all(s_probe_box);
+    lv_obj_set_size(s_probe_box, PROBE_SIZE, PROBE_SIZE);
+    lv_obj_set_style_bg_opa(s_probe_box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_color(s_probe_box, lv_color_white(), 0);
+    lv_obj_set_style_border_width(s_probe_box, 2, 0);
+    lv_obj_set_style_radius(s_probe_box, 2, 0);
+    lv_obj_remove_flag(s_probe_box, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+    s_probe_label = lv_label_create(screen);
+    lv_obj_set_size(s_probe_label, PROBE_LABEL_W, PROBE_LABEL_H);
+    lv_obj_set_style_text_font(s_probe_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(s_probe_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(s_probe_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_bg_color(s_probe_label, lv_color_hex(0x08131E), 0);
+    lv_obj_set_style_bg_opa(s_probe_label, LV_OPA_90, 0);
+    lv_obj_set_style_radius(s_probe_label, 4, 0);
+    lv_obj_set_style_pad_hor(s_probe_label, 6, 0);
+    lv_obj_set_style_pad_ver(s_probe_label, 2, 0);
+    lv_obj_remove_flag(s_probe_label, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    clear_probe();
 
     lv_obj_t *bar = lv_obj_create(screen);
     lv_obj_set_size(bar, BSP_LCD_H_RES, STATS_BAR_H);

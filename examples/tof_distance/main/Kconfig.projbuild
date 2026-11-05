@@ -60,6 +60,7 @@ menu "ToF Distance Demo"
             A valid target at or below this distance is a near-field hand.
             The field clears above this distance plus 60 mm, or with a
             signal-fail/no-confident-return status. No background is needed.
+            VL53L0X phase fail at 8190/8191 mm also denotes no target here.
             Other invalid readings remain unknown. Stable valid backgrounds
             also retain the relative-distance detector as a fallback.
 
