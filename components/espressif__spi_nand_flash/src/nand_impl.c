@@ -26,8 +26,7 @@ static const char *TAG = "nand_hal";
 static esp_err_t detect_chip(spi_nand_flash_device_t *dev)
 {
     uint8_t manufacturer_id = 0;
-    esp_err_t ret = ESP_OK;
-    ESP_RETURN_ON_ERROR(spi_nand_read_manufacturer_id(dev, &manufacturer_id), TAG, "%s, Failed to get the manufacturer ID %d", __func__, ret);
+    ESP_RETURN_ON_ERROR(spi_nand_read_manufacturer_id(dev, &manufacturer_id), TAG, "%s, Failed to get the manufacturer ID", __func__);
     ESP_LOGD(TAG, "%s: manufacturer_id: %x\n", __func__, manufacturer_id);
     dev->device_info.manufacturer_id = manufacturer_id;
 

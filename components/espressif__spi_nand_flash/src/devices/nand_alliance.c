@@ -16,9 +16,8 @@ static const char *TAG = "nand_alliance";
 
 esp_err_t spi_nand_alliance_init(spi_nand_flash_device_t *dev)
 {
-    esp_err_t ret = ESP_OK;
     uint8_t device_id = 0;
-    ESP_RETURN_ON_ERROR(spi_nand_read_device_id(dev, &device_id, sizeof(device_id)), TAG, "%s, Failed to get the device ID %d", __func__, ret);
+    ESP_RETURN_ON_ERROR(spi_nand_read_device_id(dev, &device_id, sizeof(device_id)), TAG, "%s, Failed to get the device ID", __func__);
     dev->device_info.device_id = device_id;
     snprintf(dev->device_info.chip_name, sizeof(dev->device_info.chip_name),
              "alliance-0x%02" PRIx8, device_id);
