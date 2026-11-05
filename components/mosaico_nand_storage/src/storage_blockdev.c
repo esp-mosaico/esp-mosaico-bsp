@@ -1,6 +1,10 @@
-// SPDX-License-Identifier: Apache-2.0
+/*
+ * SPDX-FileCopyrightText: 2026 Espressif Systems (Shanghai) CO LTD
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include "storage_blockdev.h"
 #include "mosaico_nand_extension.h"
+#include "dhara/error.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -15,10 +19,19 @@
 #endif
 
 static atomic_int s_read_error;
+static atomic_int s_media_error;
 static atomic_uint s_generation;
 uint32_t storage_blockdev_generation(void) { return atomic_load(&s_generation); }
 esp_err_t storage_blockdev_read_error(void) { return atomic_load(&s_read_error); }
 void storage_blockdev_clear_error(void) { atomic_store(&s_read_error, ESP_OK); }
+esp_err_t storage_blockdev_media_error(void) { return atomic_load(&s_media_error); }
+/* Writes, trims and syncs run Dhara GC, which stops at the oldest
+ * uncorrectable page and fails every later mutation until a format. */
+static esp_err_t mutation_result(esp_err_t err) {
+    if (err == ESP_ERR_FLASH_BASE + DHARA_E_ECC && atomic_exchange(&s_media_error, err) == ESP_OK)
+        ESP_LOGE("mosaico_nand_storage", "Uncorrectable NAND page blocks garbage collection; format required");
+    return err;
+}
 
 typedef struct { uint64_t address, age; } cache_entry_t;
 typedef struct {
@@ -108,7 +121,7 @@ static esp_err_t write_pages(esp_blockdev_handle_t dev, const uint8_t *src, uint
     atomic_fetch_add(&s_generation, 1);
     invalidate_range(s, address, size);
     candidate_range(s, address, size, true);
-    esp_err_t err = s->source->ops->write ? s->source->ops->write(s->source, src, address, size) : ESP_ERR_NOT_SUPPORTED;
+    esp_err_t err = s->source->ops->write ? mutation_result(s->source->ops->write(s->source, src, address, size)) : ESP_ERR_NOT_SUPPORTED;
     if (err != ESP_OK) invalidate(s);
     xSemaphoreGive(s->lock);
     return err;
@@ -119,7 +132,7 @@ static esp_err_t erase_pages(esp_blockdev_handle_t dev, uint64_t address, size_t
     xSemaphoreTake(s->lock, portMAX_DELAY);
     atomic_fetch_add(&s_generation, 1);
     invalidate_range(s, address, size);
-    esp_err_t err = s->source->ops->erase ? s->source->ops->erase(s->source, address, size) : ESP_ERR_NOT_SUPPORTED;
+    esp_err_t err = s->source->ops->erase ? mutation_result(s->source->ops->erase(s->source, address, size)) : ESP_ERR_NOT_SUPPORTED;
     if (err == ESP_OK) candidate_range(s, address, size, false);
     else invalidate(s);
     xSemaphoreGive(s->lock);
@@ -129,7 +142,7 @@ static esp_err_t sync_pages(esp_blockdev_handle_t dev) {
     storage_blockdev_t *s = dev->ctx;
     xSemaphoreTake(s->lock, portMAX_DELAY);
     invalidate(s);
-    esp_err_t err = s->source->ops->sync ? s->source->ops->sync(s->source) : ESP_OK;
+    esp_err_t err = s->source->ops->sync ? mutation_result(s->source->ops->sync(s->source)) : ESP_OK;
     xSemaphoreGive(s->lock);
     return err;
 }
@@ -138,7 +151,7 @@ static esp_err_t ioctl_pages(esp_blockdev_handle_t dev, const uint8_t command, v
     xSemaphoreTake(s->lock, portMAX_DELAY);
     atomic_fetch_add(&s_generation, 1);
     invalidate(s);
-    esp_err_t err = s->source->ops->ioctl ? s->source->ops->ioctl(s->source, command, args) : ESP_ERR_NOT_SUPPORTED;
+    esp_err_t err = s->source->ops->ioctl ? mutation_result(s->source->ops->ioctl(s->source, command, args)) : ESP_ERR_NOT_SUPPORTED;
     if (err == ESP_OK && command == MOSAICO_NAND_DISCARD_ALL && s->candidates)
         memset(s->candidates, 0, ((size_t)s->candidate_pages + 7) / 8);
     if (err != ESP_OK) invalidate(s);
@@ -166,6 +179,7 @@ esp_err_t storage_blockdev_wrap(esp_blockdev_handle_t source, size_t cache_bytes
     if (!source || !out || !source->ops || !source->ops->read || !source->ops->release ||
         !source->geometry.read_size) return ESP_ERR_INVALID_ARG;
     *out = NULL;
+    atomic_store(&s_media_error, ESP_OK);
     storage_blockdev_t *s = heap_caps_calloc(1, sizeof(*s), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!s) return ESP_ERR_NO_MEM;
     s->lock = xSemaphoreCreateMutex();
@@ -225,7 +239,7 @@ esp_err_t storage_blockdev_reclaim(esp_blockdev_handle_t dev, const uint8_t *liv
             if (!*discarded) invalidate(s);
             esp_blockdev_cmd_arg_erase_t range = {
                 .start_addr = (uint64_t)p * s->page_size, .erase_len = s->page_size};
-            err = s->source->ops->ioctl(s->source, ESP_BLOCKDEV_CMD_MARK_DELETED, &range);
+            err = mutation_result(s->source->ops->ioctl(s->source, ESP_BLOCKDEV_CMD_MARK_DELETED, &range));
             if (err != ESP_OK) break;
             s->candidates[p / 8] &= (uint8_t)~bit;
             ++*discarded;
@@ -243,7 +257,7 @@ esp_err_t storage_blockdev_reclaim(esp_blockdev_handle_t dev, const uint8_t *liv
     /* Persist completed trims even when a later operation failed. Logical
      * roots were already durable; interrupted maintenance only leaks space. */
     if (*discarded) {
-        esp_err_t sync = s->source->ops->sync(s->source);
+        esp_err_t sync = mutation_result(s->source->ops->sync(s->source));
         if (err == ESP_OK) err = sync;
     }
     xSemaphoreGive(s->lock);

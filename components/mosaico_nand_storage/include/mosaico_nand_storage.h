@@ -66,6 +66,8 @@ esp_err_t mosaico_nand_storage_error(void);
 /* Forget a latched read error of the mounted volume before a new job; a
  * persistent fault latches again on its next failing read. */
 void mosaico_nand_storage_clear_error(void);
+/* An uncorrectable page that blocks write/trim garbage collection reports
+ * RECOVERABLE_FORMAT, and its error, until the volume is formatted or remounted. */
 mosaico_nand_storage_recoverability_t mosaico_nand_storage_recoverability(void);
 /* Read committed usage; cancellation preserves outputs. The callback must not
  * perform IO or call storage APIs. Mutations invalidate the usage cache. */

@@ -1,4 +1,7 @@
-// SPDX-License-Identifier: Apache-2.0
+/*
+ * SPDX-FileCopyrightText: 2026 Espressif Systems (Shanghai) CO LTD
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #pragma once
 #include "esp_blockdev.h"
 
@@ -11,6 +14,8 @@ esp_err_t storage_blockdev_wrap(esp_blockdev_handle_t source, size_t cache_bytes
 /* Sticky physical read failure, reset only after successful recovery. */
 esp_err_t storage_blockdev_read_error(void);
 void storage_blockdev_clear_error(void);
+/* Sticky uncorrectable page met while mutating; reset when a device is wrapped. */
+esp_err_t storage_blockdev_media_error(void);
 /* Changes before every attempted mutation, including external VFS writes. */
 uint32_t storage_blockdev_generation(void);
 
