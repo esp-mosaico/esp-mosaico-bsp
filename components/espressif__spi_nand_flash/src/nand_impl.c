@@ -185,6 +185,9 @@ static esp_err_t wait_for_ready(spi_nand_flash_device_t *dev, uint32_t expected_
     TickType_t start_tick = xTaskGetTickCount();
 
     while (true) {
+        /* Sample the deadline before STATUS: a task preempted after reading
+         * BUSY must read STATUS again past the deadline before timing out. */
+        TickType_t elapsed = xTaskGetTickCount() - start_tick;
         uint8_t status;
         ESP_RETURN_ON_ERROR(spi_nand_read_register(dev, REG_STATUS, &status), TAG, "");
 
@@ -195,10 +198,9 @@ static esp_err_t wait_for_ready(spi_nand_flash_device_t *dev, uint32_t expected_
             break;
         }
 
-        if ((xTaskGetTickCount() - start_tick) >= timeout_ticks) {
+        if (elapsed >= timeout_ticks) {
             ESP_LOGE(TAG, "STAT_BUSY timeout: status=0x%02x, expected_op=%" PRIu32 " us, waited=%" PRIu32 " ms",
-                     status, expected_operation_time_us,
-                     (uint32_t)timeout_ticks * portTICK_PERIOD_MS);
+                     status, expected_operation_time_us, (uint32_t)elapsed * portTICK_PERIOD_MS);
             return ESP_ERR_TIMEOUT;
         }
 

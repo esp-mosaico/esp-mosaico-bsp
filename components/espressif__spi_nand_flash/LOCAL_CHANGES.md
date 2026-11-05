@@ -8,6 +8,8 @@ This is a modified local copy; the manifest version denotes the upstream baselin
   The appended `poll_short_commands` config field defaults to false for legacy callers.
 - Clear and sync the logical map only for confirmed formatting (BDL command `0x95`).
 - Remove forced GC after logical erase; retain TRIM, erased reads as FF, and Dhara automatic GC.
+- Sample the READY deadline before each STATUS read. Upstream 1.4.3 checked it after a BUSY read,
+  so a 10 ms preemption at 100 Hz falsely timed out 25 us page loads during downloads.
 - Omit upstream test apps/helpers; normalize whitespace. ECC, bad-block policy and geometry are unchanged.
 
 Interfaces: [mosaico_nand_extension.h](include/mosaico_nand_extension.h).
