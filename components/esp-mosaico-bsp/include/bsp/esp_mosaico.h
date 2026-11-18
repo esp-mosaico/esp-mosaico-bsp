@@ -78,7 +78,7 @@ esp_err_t bsp_board_variant_get(bsp_board_variant_t *variant);
 #define BSP_SENSOR_INT            GPIO_NUM_2
 
 /* CO5300 QSPI LCD */
-#define BSP_LCD_SPI_HOST          SPI2_HOST
+#define BSP_LCD_SPI_HOST          SPI3_HOST
 #define BSP_LCD_RST_V1_0          GPIO_NUM_42
 #define BSP_LCD_RST_V1_2          GPIO_NUM_44
 #define BSP_LCD_TE                GPIO_NUM_43
@@ -140,7 +140,7 @@ esp_err_t bsp_board_variant_get(bsp_board_variant_t *variant);
 #define BSP_MOTOR_OFF_LEVEL       0
 
 /* SPI NAND: schematic NAND_* nets are routed through the ESP32-S31 SD_* pins. */
-#define BSP_NAND_SPI_HOST         SPI3_HOST  /* SPI2_HOST is reserved for the CO5300 LCD */
+#define BSP_NAND_SPI_HOST         SPI2_HOST  /* Native SPI2 IO_MUX */
 #define BSP_NAND_CLK              GPIO_NUM_20  /* NAND_CLK -> SD_D0 */
 #define BSP_NAND_D                GPIO_NUM_21  /* NAND_D   -> SD_D1 / SIO0 */
 #define BSP_NAND_Q                GPIO_NUM_22  /* NAND_Q   -> SD_D2 / SIO1 */
