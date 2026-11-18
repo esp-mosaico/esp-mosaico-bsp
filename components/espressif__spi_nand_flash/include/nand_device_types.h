@@ -23,6 +23,9 @@ typedef enum {
     NAND_ECC_4_TO_6_BITS_CORRECTED = 3, /*!< 4-6 bits corrected */
     NAND_ECC_MAX_BITS_CORRECTED = NAND_ECC_4_TO_6_BITS_CORRECTED,
     NAND_ECC_7_8_BITS_CORRECTED = 5,    /*!< 7-8 bits corrected */
+    /* Keep device-specific classes outside the legacy raw 3-bit range. */
+    NAND_ECC_1_TO_4_BITS_CORRECTED = 8, /*!< 1-4 bits corrected */
+    NAND_ECC_5_TO_8_BITS_CORRECTED = 9, /*!< 5-8 bits corrected */
     NAND_ECC_MAX
 } nand_ecc_status_t;
 

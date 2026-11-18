@@ -35,6 +35,8 @@ extern "C" {
 // Single-plane devices whose Internal Data Move requires same odd/even block
 // parity (e.g. some GigaDevice parts). nand_copy() uses a RAM path when parity differs.
 #define NAND_FLAG_IDM_SAME_PARITY_REQUIRED    BIT(2)
+// Factory bad-block marker is OOB byte 0 of page 0, read with ECC disabled.
+#define NAND_FLAG_BBM_RAW_FIRST_BYTE         BIT(3)
 
 // Legacy typedef for compatibility - now uses nand_flash_geometry_t internally
 typedef nand_flash_geometry_t spi_nand_chip_t;
@@ -59,6 +61,8 @@ struct spi_nand_flash_device_t {
     nand_device_info_t device_info;        // Device identification (manufacturer, device ID, chip name)
     const spi_nand_ops *ops;
     void *ops_priv_data;
+    const nand_ecc_status_t *ecc_2bit_status_map;  // Optional chip-specific C0h decoding.
+    uint8_t qio_dummy_cycles;
     uint8_t *work_buffer;
     uint8_t *read_buffer;
     uint8_t *temp_buffer;
@@ -78,6 +82,10 @@ static inline bool nand_ecc_exceeds_data_refresh_threshold(const spi_nand_flash_
         min_bits_corrected = 4;
     } else if (handle->chip.ecc_data.ecc_corrected_bits_status == NAND_ECC_7_8_BITS_CORRECTED) {
         min_bits_corrected = 7;
+    } else if (handle->chip.ecc_data.ecc_corrected_bits_status == NAND_ECC_1_TO_4_BITS_CORRECTED) {
+        min_bits_corrected = 1;
+    } else if (handle->chip.ecc_data.ecc_corrected_bits_status == NAND_ECC_5_TO_8_BITS_CORRECTED) {
+        min_bits_corrected = 5;
     }
     return min_bits_corrected >= handle->chip.ecc_data.ecc_data_refresh_threshold;
 }
