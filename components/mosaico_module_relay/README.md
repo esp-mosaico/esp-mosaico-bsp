@@ -4,8 +4,8 @@ A four-channel, active-high relay driver extracted from the `relay_board` exampl
 
 | Channel | API index | Left-slot GPIO | Right-slot GPIO |
 | --- | --- | --- | --- |
-| CH1 | 0 | 48 | 47 |
-| CH2 | 1 | 53 | 46 |
+| CH1 | 0 | 53 | 46 |
+| CH2 | 1 | 48 | 47 |
 | CH3 | 2 | 13 | 11 |
 | CH4 | 3 | 12 | 10 |
 

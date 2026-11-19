@@ -11,7 +11,7 @@
 #include "freertos/task.h"
 
 static const char *TAG = "mosaico_relay";
-static const gpio_num_t s_pins[] = {GPIO_NUM_48, GPIO_NUM_53, GPIO_NUM_13, GPIO_NUM_12};
+static const gpio_num_t s_pins[] = {GPIO_NUM_53, GPIO_NUM_48, GPIO_NUM_13, GPIO_NUM_12};
 
 struct mosaico_relay {
     gpio_num_t pins[MOSAICO_RELAY_CHANNEL_COUNT];
