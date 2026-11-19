@@ -157,9 +157,10 @@ static esp_err_t initialize_bus(const bsp_nand_flash_config_t *config,
         .quadhd_io_num = quad ? BSP_NAND_HOLD : GPIO_NUM_NC,
         .quadwp_io_num = quad ? BSP_NAND_WP : GPIO_NUM_NC,
         .max_transfer_sz = active->max_transfer_sz,
+        .data_io_default_level = true,  // Keep WP#/HOLD# high during single-line commands.
     };
     ESP_RETURN_ON_ERROR(spi_bus_initialize(BSP_NAND_SPI_HOST, &bus_config, SPI_DMA_CH_AUTO), TAG,
-                        "initialize SPI3 NAND bus failed");
+                        "initialize NAND SPI bus failed");
     s_bus_initialized = true;
     esp_err_t ret = spi_bus_add_device(BSP_NAND_SPI_HOST, &device_config, &s_spi_device);
     if (ret != ESP_OK) (void)release_resources();

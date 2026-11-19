@@ -11,7 +11,8 @@ This is a modified local copy; the manifest version denotes the upstream baselin
 - Sample the READY deadline before each STATUS read. Upstream 1.4.3 checked it after a BUSY read,
   so a 10 ms preemption at 100 Hz falsely timed out 25 us page loads during downloads.
 - Drop the always-`ESP_OK` `ret` from ID-read error logs; silent-check builds warned it was unused.
-- Omit upstream test apps/helpers; normalize whitespace. ECC, bad-block policy and geometry are unchanged.
+- Backport Zbit ZB35Q01CYIG support from [PR #917](https://github.com/espressif/idf-extra-components/pull/917).
+- Omit upstream test apps/helpers; normalize whitespace.
 
 Interfaces: [mosaico_nand_extension.h](include/mosaico_nand_extension.h).
 Selected by the BSP/storage manifests with same-repository `override_path` dependencies. Reapply patches and rerun storage tests/builds when upgrading;
