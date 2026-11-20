@@ -260,7 +260,7 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
     }
 
     esp_lcd_panel_io_spi_config_t io_config = CO5300_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, NULL, NULL);
-    io_config.flags.psram_dma_direct = false;
+    io_config.flags.psram_dma_direct = true;
     ret = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_HOST, &io_config, &s_panel_io);
     if (ret != ESP_OK) {
         spi_bus_free(BSP_LCD_SPI_HOST);
