@@ -10,6 +10,8 @@ This is a modified local copy; the manifest version denotes the upstream baselin
 - Remove forced GC after logical erase; retain TRIM, erased reads as FF, and Dhara automatic GC.
 - Sample the READY deadline before each STATUS read. Upstream 1.4.3 checked it after a BUSY read,
   so a 10 ms preemption at 100 Hz falsely timed out 25 us page loads during downloads.
+- Use a microsecond READY deadline with a 20 ms floor and paced short-operation polling, avoiding
+  tick-rate-dependent false failures on devices whose occasional busy time exceeds table timing.
 - Drop the always-`ESP_OK` `ret` from ID-read error logs; silent-check builds warned it was unused.
 - Backport Zbit ZB35Q01CYIG support from [PR #917](https://github.com/espressif/idf-extra-components/pull/917).
 - Omit upstream test apps/helpers; normalize whitespace.

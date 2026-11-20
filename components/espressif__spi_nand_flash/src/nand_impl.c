@@ -10,16 +10,18 @@
 #include <inttypes.h>
 #include "esp_check.h"
 #include "esp_err.h"
+#include "esp_timer.h"
 #include "spi_nand_oper.h"
 #include "nand.h"
 #include "nand_flash_devices.h"
 #include "nand_device_types.h"
 
 #define ROM_WAIT_THRESHOLD_US 1000
-/* Vendor tables pass typical tR/tPROG/tBERS; datasheet max is often several
- * times that. Bound hangs at 10× typical plus one tick so max/tick rounding
- * cannot false-timeout. Wrong if actual BUSY exceeds 10× the delay passed in. */
+/* Keep the hang bound independent of the FreeRTOS tick rate. Short operations
+ * need enough margin for occasional device and board-level timing variation. */
 #define NAND_WAIT_READY_TIMEOUT_MULT 10U
+#define NAND_WAIT_READY_MIN_TIMEOUT_US 20000U
+#define NAND_WAIT_READY_POLL_DELAY_US 10U
 
 static const char *TAG = "nand_hal";
 
@@ -173,24 +175,20 @@ static esp_err_t s_verify_write(spi_nand_flash_device_t *handle, const uint8_t *
 
 static esp_err_t wait_for_ready(spi_nand_flash_device_t *dev, uint32_t expected_operation_time_us, uint8_t *status_out)
 {
+    int64_t start_us = esp_timer_get_time();
+    uint64_t timeout_us = (uint64_t)expected_operation_time_us * NAND_WAIT_READY_TIMEOUT_MULT;
+    if (timeout_us < NAND_WAIT_READY_MIN_TIMEOUT_US) {
+        timeout_us = NAND_WAIT_READY_MIN_TIMEOUT_US;
+    }
+
     if (expected_operation_time_us < ROM_WAIT_THRESHOLD_US) {
         esp_rom_delay_us(expected_operation_time_us);
     }
 
-    /* Hang bound only. Success path still polls until BUSY clears. */
-    uint64_t timeout_us = (uint64_t)expected_operation_time_us * NAND_WAIT_READY_TIMEOUT_MULT;
-    uint32_t timeout_ms = (uint32_t)((timeout_us + 999U) / 1000U);
-    if (timeout_ms == 0) {
-        timeout_ms = 1;
-    }
-    TickType_t timeout_ticks = (timeout_ms + portTICK_PERIOD_MS - 1U) / portTICK_PERIOD_MS;
-    timeout_ticks += 1;
-    TickType_t start_tick = xTaskGetTickCount();
-
     while (true) {
         /* Sample the deadline before STATUS: a task preempted after reading
          * BUSY must read STATUS again past the deadline before timing out. */
-        TickType_t elapsed = xTaskGetTickCount() - start_tick;
+        int64_t elapsed_us = esp_timer_get_time() - start_us;
         uint8_t status;
         ESP_RETURN_ON_ERROR(spi_nand_read_register(dev, REG_STATUS, &status), TAG, "");
 
@@ -201,14 +199,16 @@ static esp_err_t wait_for_ready(spi_nand_flash_device_t *dev, uint32_t expected_
             break;
         }
 
-        if (elapsed >= timeout_ticks) {
-            ESP_LOGE(TAG, "STAT_BUSY timeout: status=0x%02x, expected_op=%" PRIu32 " us, waited=%" PRIu32 " ms",
-                     status, expected_operation_time_us, (uint32_t)elapsed * portTICK_PERIOD_MS);
+        if ((uint64_t)elapsed_us >= timeout_us) {
+            ESP_LOGE(TAG, "STAT_BUSY timeout: status=0x%02x, expected_op=%" PRIu32 " us, timeout=%" PRIu64 " us, waited=%" PRId64 " us",
+                     status, expected_operation_time_us, timeout_us, elapsed_us);
             return ESP_ERR_TIMEOUT;
         }
 
         if (expected_operation_time_us >= ROM_WAIT_THRESHOLD_US) {
             vTaskDelay(1);
+        } else {
+            esp_rom_delay_us(NAND_WAIT_READY_POLL_DELAY_US);
         }
     }
 
