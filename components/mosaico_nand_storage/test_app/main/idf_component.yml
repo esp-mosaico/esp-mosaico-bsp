@@ -1,0 +1,6 @@
+dependencies:
+  idf: ">=6.2"
+  mosaico_nand_storage:
+    override_path: "../.."
+  espressif/spi_nand_flash:
+    override_path: "../../../espressif__spi_nand_flash"
