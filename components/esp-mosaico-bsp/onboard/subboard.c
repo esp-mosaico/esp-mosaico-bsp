@@ -91,6 +91,7 @@ static esp_err_t init_i2c_bus(void)
         .sda_io_num = BSP_SUBBOARD_I2C_SDA,
         .scl_io_num = BSP_SUBBOARD_I2C_SCL,
         .flags.enable_internal_pullup = true,
+        .glitch_ignore_cnt = 7,
     };
     ESP_RETURN_ON_ERROR(i2c_new_master_bus(&config, &s_i2c_bus), TAG, "create subboard I2C bus failed");
     ESP_LOGI(TAG, "Subboard I2C initialized: port=%d SDA=%d SCL=%d", BSP_SUBBOARD_I2C_PORT_V1_2,
