@@ -87,19 +87,30 @@ static esp_codec_dev_handle_t create_codec(esp_codec_dev_type_t type, int16_t pa
         ESP_LOGE(TAG, "create ES8311 I2C control interface failed");
         return NULL;
     }
+    /* Direction comes from esp_codec_dev_cfg_t.dev_type; MCLK ratio from esp_codec_dev_sample_info_t. */
     es8311_codec_cfg_t codec_config = {
         .ctrl_if = control_if,
         .gpio_if = gpio_if,
-        .codec_mode = type == ESP_CODEC_DEV_TYPE_OUT ? ESP_CODEC_DEV_WORK_MODE_DAC : ESP_CODEC_DEV_WORK_MODE_ADC,
-        .pa_pin = pa_pin,
-        .master_mode = false,
-        .use_mclk = true,
-        .digital_mic = false,
-        .hw_gain = {
-            .pa_voltage = 5.0f,
-            .codec_dac_voltage = 3.3f,
+        .sys_cfg = {
+            .is_master = false,
+            .no_mclk = false,
         },
-        .no_dac_ref = true,
+        .adc_cfg = {
+            .digital_mic = false,
+        },
+        .dac_cfg = {
+            .ref_enable = false,
+            .ref_dac_ch = -1,
+            .real_adc_data_ch = -1,
+        },
+        .pa_cfg = {
+            .pa_pin = pa_pin,
+            .pa_active_low = false,
+            .hw_gain = {
+                .pa_voltage = 5.0f,
+                .codec_dac_voltage = 3.3f,
+            },
+        },
     };
     const audio_codec_if_t *codec_if = es8311_codec_new(&codec_config);
     if (!codec_if) {
