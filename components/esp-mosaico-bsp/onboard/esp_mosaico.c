@@ -135,6 +135,18 @@ esp_err_t bsp_i2c_init(void)
     return ESP_OK;
 }
 
+esp_err_t bsp_i2c_attach(i2c_master_bus_handle_t bus)
+{
+    ESP_RETURN_ON_FALSE(bus, ESP_ERR_INVALID_ARG, TAG, "mainboard I2C bus is null");
+    if (s_i2c_bus == bus) {
+        return ESP_OK;
+    }
+    ESP_RETURN_ON_FALSE(!s_i2c_bus, ESP_ERR_INVALID_STATE, TAG, "mainboard I2C bus already initialized");
+    s_i2c_bus = bus;
+    ESP_LOGI(TAG, "Mainboard I2C attached");
+    return ESP_OK;
+}
+
 i2c_master_bus_handle_t bsp_i2c_get_handle(void)
 {
     return s_i2c_bus;

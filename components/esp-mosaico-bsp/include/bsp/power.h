@@ -61,6 +61,21 @@ esp_err_t bsp_power_prepare_sleep(void);
 void bsp_power_enter_deep_sleep(void) __attribute__((noreturn));
 
 esp_err_t bsp_i2c_init(void);
+
+/**
+ * @brief Use a mainboard I2C bus created by the application instead of creating one
+ *
+ * Call before any BSP function that needs the mainboard bus when the application already owns
+ * I2C0. Creating a second bus on an acquired port fails and detaches the owner's SDA/SCL pins.
+ * The caller keeps ownership; the BSP never deletes the bus.
+ *
+ * @param[in] bus Mainboard I2C bus handle.
+ * @return
+ * - ESP_OK  Bus attached, or the same bus was already attached.
+ * - ESP_ERR_INVALID_ARG  Bus is NULL.
+ * - ESP_ERR_INVALID_STATE  The BSP already uses a different mainboard bus.
+ */
+esp_err_t bsp_i2c_attach(i2c_master_bus_handle_t bus);
 i2c_master_bus_handle_t bsp_i2c_get_handle(void);
 
 #ifdef __cplusplus
